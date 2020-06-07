@@ -58,7 +58,7 @@ struct StateInfo {
   Bitboard   blockersForKing[COLOR_NB];
   Bitboard   pinners[COLOR_NB];
   Bitboard   checkSquares[PIECE_TYPE_NB];
-<<<<<<< HEAD
+  int        repetition;
 
 #if defined(EVAL_NNUE)
   Eval::NNUE::Accumulator accumulator;
@@ -66,9 +66,7 @@ struct StateInfo {
   // •]‰¿’l‚Ì·•ªŒvŽZ‚ÌŠÇ——p
   Eval::DirtyPiece dirtyPiece;
 #endif  // defined(EVAL_NNUE)
-=======
-  int        repetition;
->>>>>>> official-stockfish/master
+
 };
 
 /// A list to keep track of the position states along the setup moves (from the

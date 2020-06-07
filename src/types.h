@@ -132,17 +132,9 @@ enum Color {
   WHITE, BLACK, COLOR_NB = 2
 };
 
-<<<<<<< HEAD
 constexpr Color Colors[2] = { WHITE, BLACK };
 
-enum CastlingSide {
-  KING_SIDE, QUEEN_SIDE, CASTLING_SIDE_NB = 2
-};
-
-enum CastlingRight {
-=======
 enum CastlingRights {
->>>>>>> official-stockfish/master
   NO_CASTLING,
   WHITE_OO,
   WHITE_OOO = WHITE_OO << 1,

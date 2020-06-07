@@ -362,12 +362,14 @@ void UCI::loop(int argc, char* argv[]) {
       else if (token == "ucinewgame") Search::clear();
       else if (token == "isready")    is_ready();
 
-<<<<<<< HEAD
-      // Additional custom non-UCI commands, mainly for debugging
-      else if (token == "flip")  pos.flip();
-      else if (token == "bench") bench(pos, is, states);
-      else if (token == "d")     sync_cout << pos << sync_endl;
-      else if (token == "eval")  sync_cout << Eval::trace(pos) << sync_endl;
+      // Additional custom non-UCI commands, mainly for debugging.
+      // Do not use these commands during a search!
+      else if (token == "flip")     pos.flip();
+      else if (token == "bench")    bench(pos, is, states);
+      else if (token == "d")        sync_cout << pos << sync_endl;
+      else if (token == "eval")     sync_cout << Eval::trace(pos) << sync_endl;
+      else if (token == "compiler") sync_cout << compiler_info() << sync_endl;
+
 #if defined (EVAL_LEARN)
       else if (token == "gensfen") Learner::gen_sfen(pos, is);
       else if (token == "learn") Learner::learn(pos, is);
@@ -381,15 +383,7 @@ void UCI::loop(int argc, char* argv[]) {
       else if (token == "search") search_cmd(pos, is);
 
 #endif
-=======
-      // Additional custom non-UCI commands, mainly for debugging.
-      // Do not use these commands during a search!
-      else if (token == "flip")     pos.flip();
-      else if (token == "bench")    bench(pos, is, states);
-      else if (token == "d")        sync_cout << pos << sync_endl;
-      else if (token == "eval")     sync_cout << Eval::trace(pos) << sync_endl;
-      else if (token == "compiler") sync_cout << compiler_info() << sync_endl;
->>>>>>> official-stockfish/master
+
       else
           sync_cout << "Unknown command: " << cmd << sync_endl;
 

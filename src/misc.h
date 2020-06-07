@@ -28,6 +28,7 @@
 #include <ostream>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "types.h"
 #include "thread_win32_osx.h"
@@ -172,13 +173,13 @@ struct AsyncPRNG
   AsyncPRNG(uint64_t seed) : prng(seed) { assert(seed); }
   // [ASYNC] 乱数を一つ取り出す。
   template<typename T> T rand() {
-    std::unique_lock<Mutex> lk(mutex);
+    std::unique_lock<std::mutex> lk(mutex);
     return prng.rand<T>();
   }
 
   // [ASYNC] 0からn-1までの乱数を返す。(一様分布ではないが現実的にはこれで十分)
   uint64_t rand(uint64_t n) {
-    std::unique_lock<Mutex> lk(mutex);
+    std::unique_lock<std::mutex> lk(mutex);
     return prng.rand(n);
   }
 
@@ -186,7 +187,7 @@ struct AsyncPRNG
   uint64_t get_seed() const { return prng.get_seed(); }
 
 protected:
-  Mutex mutex;
+  std::mutex mutex;
   PRNG prng;
 };
 

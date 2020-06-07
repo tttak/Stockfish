@@ -999,13 +999,8 @@ moves_loop: // When in check, search starts from here
 
       ss->moveCount = ++moveCount;
 
-<<<<<<< HEAD
       if (rootNode && thisThread == Threads.main() && Time.elapsed() > 3000 && !Limits.silent)
-          sync_cout << "info depth " << depth / ONE_PLY
-=======
-      if (rootNode && thisThread == Threads.main() && Time.elapsed() > 3000)
           sync_cout << "info depth " << depth
->>>>>>> official-stockfish/master
                     << " currmove " << UCI::move(move, pos.is_chess960())
                     << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
       if (PvNode)
@@ -1133,23 +1128,7 @@ moves_loop: // When in check, search starts from here
       else if (   move == ss->killers[0]
                && pos.advanced_pawn_push(move)
                && pos.pawn_passed(us, to_sq(move)))
-<<<<<<< HEAD
-          extension = ONE_PLY;
-
-      // Calculate new depth for this move
-      newDepth = depth - ONE_PLY + extension;
-
-      // Step 14. Pruning at shallow depth (~170 Elo)
-      if (  !rootNode
-          && thisThread->rootDepth > 4 * ONE_PLY
-          && pos.non_pawn_material(us)
-          && bestValue > VALUE_MATED_IN_MAX_PLY)
-      {
-          // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold
-          moveCountPruning = moveCount >= futility_move_count(improving, depth / ONE_PLY);
-=======
           extension = 1;
->>>>>>> official-stockfish/master
 
       // Last captures extension
       else if (   PieceValue[EG][pos.captured_piece()] > PawnValueEg

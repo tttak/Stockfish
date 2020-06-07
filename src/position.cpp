@@ -782,7 +782,6 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
               assert(relative_rank(us, to) == RANK_6);
               assert(piece_on(to) == NO_PIECE);
               assert(piece_on(capsq) == make_piece(them, PAWN));
-<<<<<<< HEAD
 
 #if defined(EVAL_NNUE)
               piece_no1 = piece_no_of(capsq);
@@ -797,8 +796,6 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
 #if defined(EVAL_NNUE)
             piece_no1 = piece_no_of(capsq);
 #endif  // defined(EVAL_NNUE)
-=======
->>>>>>> official-stockfish/master
           }
 
           st->pawnKey ^= Zobrist::psq[captured][capsq];
@@ -860,13 +857,12 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   }
 
   // Move the piece. The tricky Chess960 castling is handled earlier
-<<<<<<< HEAD
   if (type_of(m) != CASTLING) {
 #if defined(EVAL_NNUE)
     piece_no0 = piece_no_of(from);
 #endif  // defined(EVAL_NNUE)
 
-    move_piece(pc, from, to);
+    move_piece(from, to);
 
 #if defined(EVAL_NNUE)
     dp.pieceNo[0] = piece_no0;
@@ -876,10 +872,6 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
     dp.changed_piece[0].new_piece = evalList.bona_piece(piece_no0);
 #endif  // defined(EVAL_NNUE)
   }
-=======
-  if (type_of(m) != CASTLING)
-      move_piece(from, to);
->>>>>>> official-stockfish/master
 
   // If the moving piece is a pawn do some special extra work
   if (type_of(pc) == PAWN)
@@ -1010,12 +1002,7 @@ void Position::undo_move(Move m) {
   }
   else
   {
-<<<<<<< HEAD
-      
-      move_piece(pc, to, from); // Put the piece back at the source square
-=======
       move_piece(to, from); // Put the piece back at the source square
->>>>>>> official-stockfish/master
 
 #if defined(EVAL_NNUE)
       PieceNumber piece_no0 = st->dirtyPiece.pieceNo[0];

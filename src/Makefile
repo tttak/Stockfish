@@ -35,11 +35,10 @@ BINDIR = $(PREFIX)/bin
 ### Built-in benchmark for pgo-builds
 PGOBENCH = ./$(EXE) bench
 
-<<<<<<< HEAD
 ### Object files
 OBJS = benchmark.o bitbase.o bitboard.o endgame.o evaluate.o main.o \
 	material.o misc.o movegen.o movepick.o pawns.o position.o psqt.o \
-	search.o thread.o timeman.o tt.o uci.o ucioption.o syzygy/tbprobe.o \
+	search.o thread.o timeman.o tt.o uci.o ucioption.o tune.o syzygy/tbprobe.o \
 	eval/evaluate_mir_inv_tools.o \
 	eval/nnue/evaluate_nnue.o \
 	eval/nnue/evaluate_nnue_learner.o \
@@ -55,16 +54,6 @@ OBJS = benchmark.o bitbase.o bitboard.o endgame.o evaluate.o main.o \
 	learn/learner.o \
 	learn/learning_tools.o \
 	learn/multi_think.o
-=======
-### Source and object files
-SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp main.cpp \
-	material.cpp misc.cpp movegen.cpp movepick.cpp pawns.cpp position.cpp psqt.cpp \
-	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp
-
-OBJS = $(notdir $(SRCS:.cpp=.o))
-
-VPATH = syzygy
->>>>>>> official-stockfish/master
 
 ### Establish the operating system name
 KERNEL = $(shell uname -s)
@@ -355,11 +344,7 @@ endif
 ifeq ($(pext),yes)
 	CXXFLAGS += -DUSE_PEXT
 	ifeq ($(comp),$(filter $(comp),gcc clang mingw))
-<<<<<<< HEAD
 		CXXFLAGS += -mbmi2 -mavx2
-=======
-		CXXFLAGS += -msse4 -mbmi2
->>>>>>> official-stockfish/master
 	endif
 endif
 
