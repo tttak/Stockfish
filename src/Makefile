@@ -35,6 +35,7 @@ BINDIR = $(PREFIX)/bin
 ### Built-in benchmark for pgo-builds
 PGOBENCH = ./$(EXE) bench
 
+<<<<<<< HEAD
 ### Object files
 OBJS = benchmark.o bitbase.o bitboard.o endgame.o evaluate.o main.o \
 	material.o misc.o movegen.o movepick.o pawns.o position.o psqt.o \
@@ -54,6 +55,16 @@ OBJS = benchmark.o bitbase.o bitboard.o endgame.o evaluate.o main.o \
 	learn/learner.o \
 	learn/learning_tools.o \
 	learn/multi_think.o
+=======
+### Source and object files
+SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp main.cpp \
+	material.cpp misc.cpp movegen.cpp movepick.cpp pawns.cpp position.cpp psqt.cpp \
+	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp
+
+OBJS = $(notdir $(SRCS:.cpp=.o))
+
+VPATH = syzygy
+>>>>>>> official-stockfish/master
 
 ### Establish the operating system name
 KERNEL = $(shell uname -s)
@@ -151,6 +162,8 @@ endif
 ifeq ($(ARCH),ppc-64)
 	arch = ppc64
 	bits = 64
+	popcnt = yes
+	prefetch = yes
 endif
 
 
@@ -304,7 +317,7 @@ ifeq ($(optimize),yes)
 			CXXFLAGS += -fno-gcse -mthumb -march=armv7-a -mfloat-abi=softfp
 		endif
 	endif
-	
+
 	ifeq ($(comp),$(filter $(comp),gcc clang icc))
 		ifeq ($(KERNEL),Darwin)
 			CXXFLAGS += -mdynamic-no-pic
@@ -329,7 +342,9 @@ endif
 
 ### 3.6 popcnt
 ifeq ($(popcnt),yes)
-	ifeq ($(comp),icc)
+	ifeq ($(arch),ppc64)
+		CXXFLAGS += -DUSE_POPCNT
+	else ifeq ($(comp),icc)
 		CXXFLAGS += -msse3 -DUSE_POPCNT
 	else
 		CXXFLAGS += -msse3 -mpopcnt -DUSE_POPCNT
@@ -340,7 +355,11 @@ endif
 ifeq ($(pext),yes)
 	CXXFLAGS += -DUSE_PEXT
 	ifeq ($(comp),$(filter $(comp),gcc clang mingw))
+<<<<<<< HEAD
 		CXXFLAGS += -mbmi2 -mavx2
+=======
+		CXXFLAGS += -msse4 -mbmi2
+>>>>>>> official-stockfish/master
 	endif
 endif
 
@@ -391,10 +410,10 @@ help:
 	@echo ""
 	@echo "Supported archs:"
 	@echo ""
-	@echo "x86-64                  > x86 64-bit"
-	@echo "x86-64-modern           > x86 64-bit with popcnt support"
-	@echo "x86-64-bmi2             > x86 64-bit with pext support"
-	@echo "x86-32                  > x86 32-bit with SSE support"
+	@echo "x86-64-bmi2             > x86 64-bit with pext support (also enables SSE4)"
+	@echo "x86-64-modern           > x86 64-bit with popcnt support (also enables SSE3)"
+	@echo "x86-64                  > x86 64-bit generic"
+	@echo "x86-32                  > x86 32-bit (also enables SSE)"
 	@echo "x86-32-old              > x86 32-bit fall back for old hardware"
 	@echo "ppc-64                  > PPC 64-bit"
 	@echo "ppc-32                  > PPC 32-bit"
@@ -417,11 +436,11 @@ help:
 	@echo "Advanced examples, for experienced users: "
 	@echo ""
 	@echo "make build ARCH=x86-64 COMP=clang"
-	@echo "make profile-build ARCH=x86-64-modern COMP=gcc COMPCXX=g++-4.8"
+	@echo "make profile-build ARCH=x86-64-bmi2 COMP=gcc COMPCXX=g++-4.8"
 	@echo ""
 
 
-.PHONY: help build profile-build strip install clean objclean profileclean help \
+.PHONY: help build profile-build strip install clean objclean profileclean \
         config-sanity icc-profile-use icc-profile-make gcc-profile-use gcc-profile-make \
         clang-profile-use clang-profile-make
 
@@ -462,7 +481,7 @@ objclean:
 # clean auxiliary profiling files
 profileclean:
 	@rm -rf profdir
-	@rm -f bench.txt *.gcda ./syzygy/*.gcda *.gcno ./syzygy/*.gcno
+	@rm -f bench.txt *.gcda *.gcno
 	@rm -f stockfish.profdata *.profraw
 
 default:
@@ -560,7 +579,7 @@ nnue-learn-use-blas: config-sanity
 	$(MAKE) CXXFLAGS='$(CXXFLAGS) -DEVAL_LEARN -DEVAL_NNUE -DUSE_EVAL_HASH -DUSE_AVX2 -DUSE_SSE2 -DUSE_BLAS -I/mingw64/include/OpenBLAS -fopenmp' LDFLAGS='$(LDFLAGS) -lopenblas -fopenmp' build
 
 .depend:
-	-@$(CXX) $(DEPENDFLAGS) -MM $(OBJS:.o=.cpp) > $@ 2> /dev/null
+	-@$(CXX) $(DEPENDFLAGS) -MM $(SRCS) > $@ 2> /dev/null
 
 -include .depend
 
