@@ -33,6 +33,10 @@
 #include "uci.h"
 #include "syzygy/tbprobe.h"
 
+#if defined(EVAL_NNUE) && defined(ENABLE_TEST_CMD)
+#include "eval/nnue/nnue_test_command.h"
+#endif
+
 using namespace std;
 
 extern vector<string> setup_bench(const Position&, istream&);
@@ -61,6 +65,19 @@ namespace Learner
   ValueAndPV qsearch(Position& pos);
   ValueAndPV search(Position& pos, int depth_, size_t multiPV = 1, uint64_t nodesLimit = 0);
 
+}
+#endif
+
+#if defined(EVAL_NNUE) && defined(ENABLE_TEST_CMD)
+void test_cmd(Position& pos, istringstream& is)
+{
+    // 探索をするかも知れないので初期化しておく。
+    is_ready();
+
+    std::string param;
+    is >> param;
+
+    if (param == "nnue") Eval::NNUE::TestCommand(pos, is);
 }
 #endif
 
@@ -382,6 +399,11 @@ void UCI::loop(int argc, char* argv[]) {
       else if (token == "qsearch") qsearch_cmd(pos);
       else if (token == "search") search_cmd(pos, is);
 
+#endif
+
+#if defined(EVAL_NNUE) && defined(ENABLE_TEST_CMD)
+      // テストコマンド
+      else if (token == "test") test_cmd(pos, is);
 #endif
 
       else
