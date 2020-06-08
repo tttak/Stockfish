@@ -785,10 +785,6 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
 
 #if defined(EVAL_NNUE)
               piece_no1 = piece_no_of(capsq);
-#endif  // defined(EVAL_NNUE)
-
-              board[capsq] = NO_PIECE; // Not done by remove_piece()
-#if defined(EVAL_NNUE)
               evalList.piece_no_list_board[capsq] = PIECE_NUMBER_NB;
 #endif  // defined(EVAL_NNUE)
           }
