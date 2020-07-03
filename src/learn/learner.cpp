@@ -1027,6 +1027,16 @@ double sigmoid(double x)
 }
 
 // A function that converts the evaluation value to the winning rate [0,1]
+double winning_percentage_wdl(Value value, int ply)
+{
+	double wdl_w = UCI::win_rate_model( value, ply);
+	double wdl_l = UCI::win_rate_model(-value, ply);
+	double wdl_d = 1000.0 - wdl_w - wdl_l;
+
+	return (wdl_w + wdl_d / 2.0) / 1000.0;
+}
+
+// A function that converts the evaluation value to the winning rate [0,1]
 double winning_percentage(double value)
 {
 	// 1/(1+10^(-Eval/4))
@@ -1036,13 +1046,14 @@ double winning_percentage(double value)
 }
 
 // A function that converts the evaluation value to the winning rate [0,1]
-double winning_percentage_wdl(Value value, int ply)
+double winning_percentage(Value value, int ply)
 {
-	double wdl_w = UCI::win_rate_model( value, ply);
-	double wdl_l = UCI::win_rate_model(-value, ply);
-	double wdl_d = 1000.0 - wdl_w - wdl_l;
-
-	return (wdl_w + wdl_d / 2.0) / 1000.0;
+	if (use_wdl) {
+		return winning_percentage_wdl(value, ply);
+	}
+	else {
+		return winning_percentage(value);
+	}
 }
 
 double dsigmoid(double x)
@@ -1081,8 +1092,8 @@ double calc_grad(Value deep, Value shallow, PackedSfenValue& psv)
 	// Also, the coefficient of 1/m is unnecessary if you use the update formula that has the automatic gradient adjustment function like Adam and AdaGrad.
 	// Therefore, it is not necessary to save it in memory.
 
-	double p = use_wdl ? winning_percentage_wdl(deep   , psv.gamePly) : winning_percentage(deep);
-	double q = use_wdl ? winning_percentage_wdl(shallow, psv.gamePly) : winning_percentage(shallow);
+	double p = winning_percentage(deep, psv.gamePly);
+	double q = winning_percentage(shallow, psv.gamePly);
 	return (q - p) * dsigmoid(double(shallow) / 600.0);
 }
 #endif
@@ -1107,8 +1118,8 @@ double calc_grad(Value deep, Value shallow, const PackedSfenValue& psv)
 	// = ...
 	// = q-p.
 
-	double p = use_wdl ? winning_percentage_wdl(deep   , psv.gamePly) : winning_percentage(deep);
-	double q = use_wdl ? winning_percentage_wdl(shallow, psv.gamePly) : winning_percentage(shallow);
+	double p = winning_percentage(deep, psv.gamePly);
+	double q = winning_percentage(shallow, psv.gamePly);
 
 	return q - p;
 }
@@ -1139,8 +1150,8 @@ double calc_grad(Value deep, Value shallow , const PackedSfenValue& psv)
 	// elmo (WCSC27) method
 	// Correct with the actual game wins and losses.
 
-	const double q = use_wdl ? winning_percentage_wdl(shallow , psv.gamePly) : winning_percentage(shallow);
-	const double p = use_wdl ? winning_percentage_wdl(deep    , psv.gamePly) : winning_percentage(deep);
+	const double q = winning_percentage(shallow, psv.gamePly);
+	const double p = winning_percentage(deep, psv.gamePly);
 
 	// Use 1 as the correction term if the expected win rate is 1, 0 if you lose, and 0.5 if you draw.
 	// game_result = 1,0,-1 so add 1 and divide by 2.
@@ -1162,8 +1173,8 @@ void calc_cross_entropy(Value deep, Value shallow, const PackedSfenValue& psv,
 	double& cross_entropy_eval, double& cross_entropy_win, double& cross_entropy,
 	double& entropy_eval, double& entropy_win, double& entropy)
 {
-	const double p /* teacher_winrate */ = use_wdl ? winning_percentage_wdl(deep   , psv.gamePly) : winning_percentage(deep);
-	const double q /* eval_winrate    */ = use_wdl ? winning_percentage_wdl(shallow, psv.gamePly) : winning_percentage(shallow);
+	const double p /* teacher_winrate */ = winning_percentage(deep, psv.gamePly);
+	const double q /* eval_winrate    */ = winning_percentage(shallow, psv.gamePly);
 	const double t = double(psv.game_result + 1) / 2;
 
 	constexpr double epsilon = 0.000001;
