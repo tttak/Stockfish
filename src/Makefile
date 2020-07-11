@@ -48,6 +48,7 @@ SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp main.cpp 
 	eval/nnue/features/p.cpp \
 	eval/nnue/features/castling_right.cpp \
 	eval/nnue/features/enpassant.cpp \
+	eval/nnue/features/mobility.cpp \
 	eval/nnue/nnue_test_command.cpp \
 	extra/sfen_packer.cpp \
 	learn/gensfen2019.cpp \
