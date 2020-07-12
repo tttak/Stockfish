@@ -12,7 +12,9 @@
 //#include "architectures/halfkp_256x2-32-32.h"
 //#include "architectures/halfkp-cr-ep_256x2-32-32.h"
 //#include "architectures/halfkp_384x2-32-32.h"
-#include "architectures/halfkp-mobility_256x2-32-32.h"
+//#include "architectures/halfkp-mobility_256x2-32-32.h"
+//#include "architectures/halfkp-pawn_256x2-32-32.h"
+#include "architectures/halfkp-mobility-pawn_256x2-32-32.h"
 
 namespace Eval {
 
