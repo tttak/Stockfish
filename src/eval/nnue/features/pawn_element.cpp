@@ -1,8 +1,8 @@
-//Definition of input feature quantity Pawn of NNUE evaluation function
+//Definition of input feature quantity PawnElement of NNUE evaluation function
 
 #if defined(EVAL_NNUE)
 
-#include "pawn.h"
+#include "pawn_element.h"
 #include "index_list.h"
 #include "../../../pawns.h"
 
@@ -13,7 +13,8 @@ namespace Eval {
     namespace Features {
 
       // Get a list of indices with a value of 1 among the features
-      void Pawn::AppendActiveIndices(
+      template <PawnElementType PEType>
+      void PawnElement<PEType>::AppendActiveIndices(
         const Position& pos, Color perspective, IndexList* active) {
         // do nothing if array size is small to avoid compiler warning
         if (RawFeatures::kMaxActiveDimensions < kMaxActiveDimensions) return;
@@ -111,7 +112,8 @@ namespace Eval {
       }
 
       // Get a list of indices whose values ??have changed from the previous one in the feature quantity
-      void Pawn::AppendChangedIndices(
+      template <PawnElementType PEType>
+      void PawnElement<PEType>::AppendChangedIndices(
         const Position& pos, Color perspective,
         IndexList* removed, IndexList* added) {
         // TODO : difference calculation
@@ -120,43 +122,53 @@ namespace Eval {
       }
 
       // MakeIndex
-      inline IndexType Pawn::MakeIndex(int pawn_count
+      template <PawnElementType PEType>
+      inline IndexType PawnElement<PEType>::MakeIndex(int pawn_count
                                        , Bitboard neighbours, Bitboard stoppers, Bitboard support ,Bitboard phalanx, Bitboard opposed
                                        , Bitboard lever, Bitboard leverPush, Bitboard blocked
                                        , bool backward, bool passed, bool doubled
                                       ) {
         static Bitboard ZERO_BB = Bitboard(0);
 
-        return MakeIndexOfNoPiece(pawn_count) + 1
-               + (((((((((((
-                       (ZERO_BB != neighbours)
-                 * 2 + (ZERO_BB != stoppers))
-                 * 2 + (ZERO_BB != support))
-                 * 2 + (ZERO_BB != phalanx))
-                 * 2 + (ZERO_BB != opposed))
-                 * 2 + (ZERO_BB != lever))
-                 * 2 + (ZERO_BB != leverPush))
-                 * 2 + (ZERO_BB != blocked))
-                 * 2 + backward)
-                 * 2 + passed)
-                 * 2 + doubled)
-               );
+        return MakeIndex(pawn_count,
+                   (PEType == PawnElementType::kNeighbours) ? (ZERO_BB != neighbours) :
+                   (PEType == PawnElementType::kStoppers  ) ? (ZERO_BB != stoppers  ) :
+                   (PEType == PawnElementType::kSupport   ) ? (ZERO_BB != support   ) :
+                   (PEType == PawnElementType::kPhalanx   ) ? (ZERO_BB != phalanx   ) :
+                   (PEType == PawnElementType::kOpposed   ) ? (ZERO_BB != opposed   ) :
+                   (PEType == PawnElementType::kLever     ) ? (ZERO_BB != lever     ) :
+                   (PEType == PawnElementType::kLeverPush ) ? (ZERO_BB != leverPush ) :
+                   (PEType == PawnElementType::kBlocked   ) ? (ZERO_BB != blocked   ) :
+                   (PEType == PawnElementType::kBackward  ) ? backward :
+                   (PEType == PawnElementType::kPassed    ) ? passed   :
+                   (PEType == PawnElementType::kDoubled   ) ? doubled  :
+                   false
+                 );
+      }
+
+      // MakeIndex
+      template <PawnElementType PEType>
+      inline IndexType PawnElement<PEType>::MakeIndex(int pawn_count, bool element) {
+        return MakeIndexOfNoPiece(pawn_count) + 1 + element;
       }
 
       // MakeIndexOfNoPiece
-      inline IndexType Pawn::MakeIndexOfNoPiece(int pawn_count) {
-        return (2048 + 1) * pawn_count;
+      template <PawnElementType PEType>
+      inline IndexType PawnElement<PEType>::MakeIndexOfNoPiece(int pawn_count) {
+        return (2 + 1) * pawn_count;
       }
 
       // pawn_double_attacks_bb() returns the squares doubly attacked by pawns of the
       // given color from the squares in the given bitboard.
-      Bitboard Pawn::pawn_double_attacks_bb(Bitboard b, Color C) {
+      template <PawnElementType PEType>
+      Bitboard PawnElement<PEType>::pawn_double_attacks_bb(Bitboard b, Color C) {
         return C == WHITE ? shift<NORTH_WEST>(b) & shift<NORTH_EAST>(b)
                           : shift<SOUTH_WEST>(b) & shift<SOUTH_EAST>(b);
       }
 
       // shift() moves a bitboard one step along direction D
-      Bitboard Pawn::shift_(Bitboard b, Direction D) {
+      template <PawnElementType PEType>
+      Bitboard PawnElement<PEType>::shift_(Bitboard b, Direction D) {
         return  D == NORTH      ?  b             << 8 : D == SOUTH      ?  b             >> 8
               : D == NORTH+NORTH?  b             <<16 : D == SOUTH+SOUTH?  b             >>16
               : D == EAST       ? (b & ~FileHBB) << 1 : D == WEST       ? (b & ~FileABB) >> 1
@@ -164,6 +176,18 @@ namespace Eval {
               : D == SOUTH_EAST ? (b & ~FileHBB) >> 7 : D == SOUTH_WEST ? (b & ~FileABB) >> 9
               : 0;
       }
+
+      template class PawnElement<PawnElementType::kNeighbours>;
+      template class PawnElement<PawnElementType::kStoppers  >;
+      template class PawnElement<PawnElementType::kSupport   >;
+      template class PawnElement<PawnElementType::kPhalanx   >;
+      template class PawnElement<PawnElementType::kOpposed   >;
+      template class PawnElement<PawnElementType::kLever     >;
+      template class PawnElement<PawnElementType::kLeverPush >;
+      template class PawnElement<PawnElementType::kBlocked   >;
+      template class PawnElement<PawnElementType::kBackward  >;
+      template class PawnElement<PawnElementType::kPassed    >;
+      template class PawnElement<PawnElementType::kDoubled   >;
 
     }  // namespace Features
 
