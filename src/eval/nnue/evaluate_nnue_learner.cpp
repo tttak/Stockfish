@@ -24,6 +24,8 @@
 #include "trainer/features/factorizer_pawn.h"
 // HalfKP_GamePly40x4
 #include "trainer/features/factorizer_half_kp_gameply40x4.h"
+// HalfKPKfile
+#include "trainer/features/factorizer_half_kpkfile.h"
 
 #include "trainer/trainer_feature_transformer.h"
 #include "trainer/trainer_input_slice.h"
