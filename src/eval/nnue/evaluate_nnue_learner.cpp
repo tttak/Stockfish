@@ -26,6 +26,8 @@
 #include "trainer/features/factorizer_half_kp_gameply40x4.h"
 // HalfKPKfile
 #include "trainer/features/factorizer_half_kpkfile.h"
+// HalfKPKrank
+#include "trainer/features/factorizer_half_kpkrank.h"
 
 #include "trainer/trainer_feature_transformer.h"
 #include "trainer/trainer_input_slice.h"

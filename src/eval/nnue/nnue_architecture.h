@@ -18,7 +18,8 @@
 //#include "architectures/halfkp-pawnelement_256x2-32-32.h"
 //#include "architectures/halfkp-kk_256x2-32-32.h"
 //#include "architectures/halfkp_gameply40x4_256x2-32-32.h"
-#include "architectures/halfkpkfile_256x2-32-32.h"
+//#include "architectures/halfkpkfile_256x2-32-32.h"
+#include "architectures/halfkpkrank_256x2-32-32.h"
 
 namespace Eval {
 
