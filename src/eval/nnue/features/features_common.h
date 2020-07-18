@@ -28,6 +28,9 @@ enum class TriggerEvent {
   kEnemyKingMoved, // do all calculations when enemy balls move
   kAnyKingMoved, // do all calculations if either ball moves
   kAnyPieceMoved, // always do all calculations
+
+  kFriendKingMovedOrPly4181121,
+  kEnemyKingMovedOrPly4181121,
 };
 
 // turn side or other side

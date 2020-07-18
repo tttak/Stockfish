@@ -1249,6 +1249,7 @@ struct SfenReader
 			// Get the hash key.
 			StateInfo si;
 			pos.set_from_packed_sfen(ps.sfen,&si,th);
+			pos.set_game_ply(ps.gamePly);
 			sfen_for_mse_hash.insert(pos.key());
 		}
 	}
@@ -1681,6 +1682,8 @@ void LearnerThink::calc_loss(size_t thread_id, uint64_t done)
 				cout << "Error! : illegal packed sfen " << pos.fen() << endl;
 			}
 
+			pos.set_game_ply(ps.gamePly);
+
 			// Evaluation value for shallow search
 			// The value of evaluate() may be used, but when calculating loss, learn_cross_entropy and
 			// Use qsearch() because it is difficult to compare the values.
@@ -1972,6 +1975,9 @@ void LearnerThink::thread_worker(size_t thread_id)
 			cout << "Error! : illigal packed sfen = " << pos.fen() << endl;
 			goto RetryRead;
 		}
+
+		pos.set_game_ply(ps.gamePly);
+
 #if !defined(EVAL_NNUE)
 		{
 			auto key = pos.key();

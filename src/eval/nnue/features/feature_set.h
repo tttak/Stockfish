@@ -101,6 +101,16 @@ class FeatureSetBase {
         case TriggerEvent::kAnyKingMoved:
           reset[perspective] = dp.pieceNo[0] >= PIECE_NUMBER_KING;
           break;
+
+        case TriggerEvent::kFriendKingMovedOrPly4181121:
+          reset[perspective] =
+              (dp.pieceNo[0] == PIECE_NUMBER_KING + perspective) || (pos.game_ply() == 41) || (pos.game_ply() == 81) || (pos.game_ply() == 121);
+          break;
+        case TriggerEvent::kEnemyKingMovedOrPly4181121:
+          reset[perspective] =
+              (dp.pieceNo[0] == PIECE_NUMBER_KING + ~perspective) || (pos.game_ply() == 41) || (pos.game_ply() == 81) || (pos.game_ply() == 121);
+          break;
+
         case TriggerEvent::kAnyPieceMoved:
           reset[perspective] = true;
           break;
