@@ -121,7 +121,7 @@ namespace Eval {
 
       // MakeIndex
       inline IndexType Pawn::MakeIndex(int pawn_count
-                                       , Bitboard neighbours, Bitboard stoppers, Bitboard support ,Bitboard phalanx, Bitboard opposed
+                                       , Bitboard neighbours, Bitboard stoppers, Bitboard support, Bitboard phalanx, Bitboard opposed
                                        , Bitboard lever, Bitboard leverPush, Bitboard blocked
                                        , bool backward, bool passed, bool doubled
                                       ) {
