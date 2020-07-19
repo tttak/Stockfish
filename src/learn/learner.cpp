@@ -106,6 +106,21 @@ T operator += (std::atomic<T>& x, const T rhs)
 template <typename T>
 T operator -= (std::atomic<T>& x, const T rhs) { return x += -rhs; }
 
+namespace Eval {
+	namespace NNUE {
+		int fibonacci[Eval::fe_end + 1];
+	}
+}
+
+
+void init_fibonacci() {
+	int n = 0;
+	for (int i = 0; i <= Eval::fe_end; i++) {
+		n += i;
+		Eval::NNUE::fibonacci[i] = n;
+	}
+}
+
 namespace Learner
 {
 
@@ -2903,6 +2918,8 @@ void learn(Position&, istringstream& is)
 	uint64_t mirror_percentage = 0;
 
 	string validation_set_file_name;
+
+	init_fibonacci();
 
 	// Assume the filenames are staggered.
 	while (true)
