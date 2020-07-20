@@ -65,6 +65,10 @@ namespace Eval {
 
           active->push_back(MakeIndex<Pt>(piece_count, mob + 1));
           piece_count++;
+
+          if (piece_count >= kMaxPieceCount) {
+            break;
+          }
         }
 
         while (piece_count < kMaxPieceCount) {
