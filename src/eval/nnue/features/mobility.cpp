@@ -25,12 +25,12 @@ namespace Eval {
         // Find our pawns that are blocked or on the first two ranks
         Bitboard b = pos.pieces(perspective, PAWN) & (shift(pos.pieces(), Down) | LowRanks);
 
-        // Probe the pawn hash table
-        Pawns::Entry* pe = Pawns::probe(pos);
+        Bitboard pawnAttacks_them = (perspective == WHITE) ? pawn_attacks_bb<BLACK>(pos.pieces(~perspective, PAWN))
+                                                           : pawn_attacks_bb<WHITE>(pos.pieces(~perspective, PAWN));
 
         // Squares occupied by those pawns, by our king or queen, by blockers to attacks on our king
         // or controlled by enemy pawns are excluded from the mobility area.
-        Bitboard mobilityArea = ~(b | pos.pieces(perspective, KING, QUEEN) | pos.blockers_for_king(perspective) | pe->pawn_attacks(~perspective));
+        Bitboard mobilityArea = ~(b | pos.pieces(perspective, KING, QUEEN) | pos.blockers_for_king(perspective) | pawnAttacks_them);
 
         AppendActiveIndices<KNIGHT>(pos, perspective, active, mobilityArea);
         AppendActiveIndices<BISHOP>(pos, perspective, active, mobilityArea);

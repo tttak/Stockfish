@@ -22,7 +22,7 @@ namespace Eval {
         // Hash value embedded in the evaluation function file
         static constexpr std::uint32_t kHashValue = 0x62924F91u;
 
-        static constexpr IndexType kMaxPieceCount = 3;
+        static constexpr IndexType kMaxPieceCount = 2;
         static constexpr IndexType kMaxMobilityCount = 28 + 1;
 
         // number of feature dimensions
