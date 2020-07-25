@@ -16,7 +16,7 @@ namespace NNUE {
 
 // Input features used in evaluation function
 using RawFeatures = Features::FeatureSet<
-    Features::HalfKPE4<Features::Side::kFriend>>;
+    Features::HalfKPE4<Features::Side::kFriend, Features::EffectType::kFromSmallerPiecesOnly, Features::EffectType::kFromSmallerPiecesOnly>>;
 
 // Number of input feature dimensions after conversion
 constexpr IndexType kTransformedFeatureDimensions = 256;

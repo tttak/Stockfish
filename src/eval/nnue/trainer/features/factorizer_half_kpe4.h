@@ -17,10 +17,10 @@ namespace Features {
 
 // Class template that converts input features into learning features
 // Specialization for HalfKPE4
-template <Side AssociatedKing>
-class Factorizer<HalfKPE4<AssociatedKing>> {
+template <Side AssociatedKing, EffectType EffectTypeUs, EffectType EffectTypeThem>
+class Factorizer<HalfKPE4<AssociatedKing, EffectTypeUs, EffectTypeThem>> {
  private:
-  using FeatureType = HalfKPE4<AssociatedKing>;
+  using FeatureType = HalfKPE4<AssociatedKing, EffectTypeUs, EffectTypeThem>;
 
   // The maximum value of the number of indexes whose value is 1 at the same time among the feature values
   static constexpr IndexType kMaxActiveDimensions =
@@ -64,8 +64,8 @@ class Factorizer<HalfKPE4<AssociatedKing>> {
   }
 };
 
-template <Side AssociatedKing>
-constexpr FeatureProperties Factorizer<HalfKPE4<AssociatedKing>>::kProperties[];
+template <Side AssociatedKing, EffectType EffectTypeUs, EffectType EffectTypeThem>
+constexpr FeatureProperties Factorizer<HalfKPE4<AssociatedKing, EffectTypeUs, EffectTypeThem>>::kProperties[];
 
 }  // namespace Features
 

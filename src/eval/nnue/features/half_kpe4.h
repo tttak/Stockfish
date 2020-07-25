@@ -8,14 +8,23 @@
 #include "../../../evaluate.h"
 #include "features_common.h"
 
+#define USE_MOBILITY_IN_STATEINFO
+
+struct StateInfo;
+
 namespace Eval {
 
 namespace NNUE {
 
 namespace Features {
 
+enum class EffectType {
+  kAll,
+  kFromSmallerPiecesOnly,
+};
+
 // Feature HalfKPE4: Combination of the position of own ball or enemy ball and the position of pieces other than balls
-template <Side AssociatedKing>
+template <Side AssociatedKing, EffectType EffectTypeUs, EffectType EffectTypeThem>
 class HalfKPE4 {
  public:
   // feature quantity name
@@ -49,6 +58,9 @@ class HalfKPE4 {
   // Get the piece information
   static void GetPieces(const Position& pos, Color perspective,
                         BonaPiece** pieces, Square* sq_target_k);
+
+  // CalcMobility
+  static void CalcMobility(const StateInfo* st, Bitboard mobility[2][2][6]);
 };
 
 }  // namespace Features

@@ -20,7 +20,10 @@
 //#include "architectures/halfkpkfile_256x2-32-32.h"
 //#include "architectures/halfkpkrank_256x2-32-32.h"
 //#include "architectures/halfkp-pp_256x2-32-32.h"
-#include "architectures/halfkpe4_256x2-32-32.h"
+//#include "architectures/halfkpe4aa_256x2-32-32.h"
+//#include "architectures/halfkpe4as_256x2-32-32.h"
+//#include "architectures/halfkpe4sa_256x2-32-32.h"
+#include "architectures/halfkpe4ss_256x2-32-32.h"
 
 namespace Eval {
 

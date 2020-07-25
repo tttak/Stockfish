@@ -66,7 +66,10 @@ struct StateInfo {
    // For management of evaluation value difference calculation
   Eval::DirtyPiece dirtyPiece;
 
+#if defined(USE_MOBILITY_IN_STATEINFO)
   Bitboard mobility[2][6];
+#endif
+
 #endif  // defined(EVAL_NNUE)
 };
 
