@@ -12,6 +12,8 @@
 
 #include "evaluate_nnue.h"
 
+//#define DEBUG_LOG_READ_PARAMETERS
+
 namespace Eval {
 
 namespace NNUE {
@@ -50,6 +52,11 @@ template <typename T>
 bool ReadParameters(std::istream& stream, const AlignedPtr<T>& pointer) {
   std::uint32_t header;
   stream.read(reinterpret_cast<char*>(&header), sizeof(header));
+
+#if defined(DEBUG_LOG_READ_PARAMETERS)
+  std::cout << std::showbase << std::hex << "header=" << header << ", T::GetHashValue()=" << T::GetHashValue() << std::dec << std::endl;
+#endif
+
   if (!stream || header != T::GetHashValue()) return false;
   return pointer->ReadParameters(stream);
 }
@@ -79,9 +86,19 @@ bool ReadHeader(std::istream& stream,
   stream.read(reinterpret_cast<char*>(&version), sizeof(version));
   stream.read(reinterpret_cast<char*>(hash_value), sizeof(*hash_value));
   stream.read(reinterpret_cast<char*>(&size), sizeof(size));
+
+#if defined(DEBUG_LOG_READ_PARAMETERS)
+  std::cout << std::showbase << std::hex << "version=" << version << ", *hash_value=" << *hash_value << std::dec << std::endl;
+#endif
+
   if (!stream || version != kVersion) return false;
   architecture->resize(size);
   stream.read(&(*architecture)[0], size);
+
+#if defined(DEBUG_LOG_READ_PARAMETERS)
+  std::cout << "*architecture=" << *architecture << std::endl;
+#endif
+
   return !stream.fail();
 }
 

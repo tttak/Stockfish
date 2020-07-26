@@ -2820,6 +2820,92 @@ void convert_plain(const vector<string>& filenames, const string& output_file_na
 	std::cout << "all done" << std::endl;
 }
 
+void convert_from_halfkp_256x2_32_32(const std::string in_filename, const std::string out_filename, const std::string architecture, std::uint32_t version, std::uint32_t header_hash_value, std::uint32_t feature_hash_value, std::uint32_t network_hash_value, int multiply, int other_features)
+{
+	std::cout << "convert_from_halfkp_256x2_32_32 START" << std::endl;
+	std::cout << "in  : " << in_filename  << std::endl;
+	std::cout << "out : " << out_filename << std::endl;
+
+	int size;
+	const std::string halfkp_architecture = "Features=HalfKP(Friend)[41024->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+	std::vector<char> buff(2 * 300000 * 256);
+
+	std::ifstream ifs(in_filename , std::ios::binary);
+	std::ofstream ofs(out_filename, std::ios::binary);
+
+	// ----- Header
+	std::uint32_t architecture_length = architecture.length();
+	ifs.read(buff.data(), 4 * 3 + halfkp_architecture.length());
+	ofs.write((char*)&version, 4);
+	ofs.write((char*)&header_hash_value, 4);
+	ofs.write((char*)&architecture_length, 4);
+	ofs.write(architecture.c_str(), architecture_length);
+
+	// ----- feature_transformer
+	// Header
+	ifs.read(buff.data(), 4);
+	ofs.write((char*)&feature_hash_value, 4);
+
+	// Bias
+	size = 2 * 256;
+	ifs.read (buff.data(), size);
+	ofs.write(buff.data(), size);
+
+	// Weight
+	if (other_features > 0) {
+		size = 2 * other_features * 256;
+		memset(buff.data(), 0, size);
+		ofs.write(buff.data(), size);
+	}
+
+	size = 2 * 41024 * 256;
+	ifs.read(buff.data(), size);
+	for (int i = 0; i < multiply; ++i) {
+		ofs.write(buff.data(), size);
+	}
+
+	// ----- network
+	// Header
+	ifs.read(buff.data(), 4);
+	ofs.write((char*)&network_hash_value, 4);
+
+	// Bias
+	size = 4 * 32;
+	ifs.read (buff.data(), size);
+	ofs.write(buff.data(), size);
+
+	// Weight
+	size = 1 * 512 * 32;
+	ifs.read (buff.data(), size);
+	ofs.write(buff.data(), size);
+
+	// Bias
+	size = 4 * 32;
+	ifs.read (buff.data(), size);
+	ofs.write(buff.data(), size);
+
+	// Weight
+	size = 1 * 32 * 32;
+	ifs.read (buff.data(), size);
+	ofs.write(buff.data(), size);
+
+	// Bias
+	size = 4 * 1;
+	ifs.read (buff.data(), size);
+	ofs.write(buff.data(), size);
+
+	// Weight
+	size = 1 * 32 * 1;
+	ifs.read (buff.data(), size);
+	ofs.write(buff.data(), size);
+
+	// -----
+
+	ifs.close();
+	ofs.close();
+	std::cout << "convert_from_halfkp_256x2_32_32 END" << std::endl;
+}
+
 // Learning from the generated game record
 void learn(Position&, istringstream& is)
 {
@@ -2877,6 +2963,17 @@ void learn(Position&, istringstream& is)
 	bool pgn_eval_side_to_move = false;
 	// File name to write in those cases (default is "shuffled_sfen.bin")
 	string output_file_name = "shuffled_sfen.bin";
+
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32             = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_cr_ep_256x2_32_32         = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_mobility_256x2_32_32      = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_pawn_256x2_32_32          = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_mobility_pawn_256x2_32_32 = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_kk_256x2_32_32            = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_gameply40x4_256x2_32_32   = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkpkfile_256x2_32_32          = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32          = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32            = false;
 
 	// If the absolute value of the evaluation value in the deep search of the teacher phase exceeds this value, that phase is discarded.
 	int eval_limit = 32000;
@@ -3013,6 +3110,18 @@ void learn(Position&, istringstream& is)
 		else if (option == "convert_bin_from_pgn-extract") use_convert_bin_from_pgn_extract = true;
 		else if (option == "pgn_eval_side_to_move") is >> pgn_eval_side_to_move;
 
+		// example: learn convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32 nn_HalfKP.bin output_file_name nn_HalfKPE4.bin
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32"            ) use_convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32             = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_cr_ep_256x2_32_32"        ) use_convert_from_halfkp_256x2_32_32_to_halfkp_cr_ep_256x2_32_32         = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_mobility_256x2_32_32"     ) use_convert_from_halfkp_256x2_32_32_to_halfkp_mobility_256x2_32_32      = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_pawn_256x2_32_32"         ) use_convert_from_halfkp_256x2_32_32_to_halfkp_pawn_256x2_32_32          = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_mobility_pawn_256x2_32_32") use_convert_from_halfkp_256x2_32_32_to_halfkp_mobility_pawn_256x2_32_32 = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_kk_256x2_32_32"           ) use_convert_from_halfkp_256x2_32_32_to_halfkp_kk_256x2_32_32            = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_gameply40x4_256x2_32_32"  ) use_convert_from_halfkp_256x2_32_32_to_halfkp_gameply40x4_256x2_32_32   = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkpkfile_256x2_32_32"         ) use_convert_from_halfkp_256x2_32_32_to_halfkpkfile_256x2_32_32          = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32"         ) use_convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32          = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32"           ) use_convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32            = true;
+
 		// Otherwise, it's a filename.
 		else
 			filenames.push_back(option);
@@ -3130,6 +3239,136 @@ void learn(Position&, istringstream& is)
 		init_nnue(true);
 		cout << "convert_bin_from_pgn-extract.." << endl;
 		convert_bin_from_pgn_extract(filenames, output_file_name, pgn_eval_side_to_move);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKPE4(Friend)[164096->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0x3e5aa0ee;
+		const std::uint32_t feature_hash_value = 0x5d69d1b8;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 4;
+		const int other_features = 0;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkp_cr_ep_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKP(Friend)+CastlingRight+EnPassant[41036->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0x166149ff;
+		const std::uint32_t feature_hash_value = 0x755238a9;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 1;
+		const int other_features = 4 + 8;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkp_mobility_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKP(Friend)+Mobility[41256->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0xfb7e39cc;
+		const std::uint32_t feature_hash_value = 0x984d489a;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 1;
+		const int other_features = 232;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkp_pawn_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKP(Friend)+Pawn[57416->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0xdb7e39cc;
+		const std::uint32_t feature_hash_value = 0xb84d489a;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 1;
+		const int other_features = 16392;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkp_mobility_pawn_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKP(Friend)+Mobility+Pawn[57648->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0x31370789;
+		const std::uint32_t feature_hash_value = 0x520476df;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 1;
+		const int other_features = 232 + 16392;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkp_kk_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKP(Friend)+KK[45120->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0xfb7e39ca;
+		const std::uint32_t feature_hash_value = 0x984d489c;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 1;
+		const int other_features = 4096;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkp_gameply40x4_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKP_GamePly40x4(Friend)[164096->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0x7e5aa6ee;
+		const std::uint32_t feature_hash_value = 0x1d69d7b8;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 4;
+		const int other_features = 0;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkpkfile_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKPKfile(Friend)[328192->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0x7e0aa6ee;
+		const std::uint32_t feature_hash_value = 0x1d39d7b8;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 8;
+		const int other_features = 0;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKPKrank(Friend)[328192->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0x7e0aa6ee;
+		const std::uint32_t feature_hash_value = 0x1d39d7b8;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 8;
+		const int other_features = 0;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKP(Friend)+PP[246144->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0xfb7ed9cc;
+		const std::uint32_t feature_hash_value = 0x984da89a;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 1;
+		const int other_features = 205120;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
 		return;
 	}
 
