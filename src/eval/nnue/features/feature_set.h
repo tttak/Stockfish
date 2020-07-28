@@ -111,6 +111,35 @@ class FeatureSetBase {
               (dp.pieceNo[0] == PIECE_NUMBER_KING + ~perspective) || (pos.game_ply() == 41) || (pos.game_ply() == 81) || (pos.game_ply() == 121);
           break;
 
+        case TriggerEvent::kFriendKingMovedOrPieceCount_24_16_8:
+          {
+            const auto now = pos.state();
+            const auto prev = pos.state()->previous;
+            reset[perspective] =
+                (dp.pieceNo[0] == PIECE_NUMBER_KING + perspective) ||
+                (prev && (
+                           (prev->allPiecesCount == 25 && now->allPiecesCount == 24) ||
+                           (prev->allPiecesCount == 17 && now->allPiecesCount == 16) ||
+                           (prev->allPiecesCount ==  9 && now->allPiecesCount ==  8)
+                         )
+                );
+          }
+          break;
+        case TriggerEvent::kEnemyKingMovedOrPieceCount_24_16_8:
+          {
+            const auto now = pos.state();
+            const auto prev = pos.state()->previous;
+            reset[perspective] =
+                (dp.pieceNo[0] == PIECE_NUMBER_KING + ~perspective) ||
+                (prev && (
+                           (prev->allPiecesCount == 25 && now->allPiecesCount == 24) ||
+                           (prev->allPiecesCount == 17 && now->allPiecesCount == 16) ||
+                           (prev->allPiecesCount ==  9 && now->allPiecesCount ==  8)
+                         )
+                );
+          }
+          break;
+
         case TriggerEvent::kAnyPieceMoved:
           reset[perspective] = true;
           break;

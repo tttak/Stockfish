@@ -70,6 +70,10 @@ struct StateInfo {
   Bitboard mobility[2][6];
 #endif
 
+#if defined(USE_PIECECOUNT_IN_STATEINFO)
+  int allPiecesCount;
+#endif
+
 #endif  // defined(EVAL_NNUE)
 };
 

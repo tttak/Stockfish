@@ -31,6 +31,9 @@ enum class TriggerEvent {
 
   kFriendKingMovedOrPly4181121,
   kEnemyKingMovedOrPly4181121,
+
+  kFriendKingMovedOrPieceCount_24_16_8,
+  kEnemyKingMovedOrPieceCount_24_16_8,
 };
 
 // turn side or other side

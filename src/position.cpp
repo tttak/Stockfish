@@ -421,6 +421,10 @@ void Position::set_state(StateInfo* si) const {
   si->mobility[1][4] = pieceMobility<QUEEN, BLACK>(*this);
   si->mobility[1][5] = pieceMobility<KING, BLACK>(*this);
 #endif  // defined(USE_MOBILITY_IN_STATEINFO)
+
+#if defined(USE_PIECECOUNT_IN_STATEINFO)
+  si->allPiecesCount = pieceCount[make_piece(WHITE, ALL_PIECES)] + pieceCount[make_piece(BLACK, ALL_PIECES)];
+#endif  // defined(USE_PIECECOUNT_IN_STATEINFO)
 }
 
 
@@ -982,6 +986,10 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   st->mobility[1][4] = pieceMobility<QUEEN, BLACK>(*this);
   st->mobility[1][5] = pieceMobility<KING, BLACK>(*this);
 #endif  // defined(USE_MOBILITY_IN_STATEINFO)
+
+#if defined(USE_PIECECOUNT_IN_STATEINFO)
+  st->allPiecesCount = pieceCount[make_piece(WHITE, ALL_PIECES)] + pieceCount[make_piece(BLACK, ALL_PIECES)];
+#endif  // defined(USE_PIECECOUNT_IN_STATEINFO)
 
   // Calculate the repetition info. It is the ply distance from the previous
   // occurrence of the same position, negative in the 3-fold case, or zero

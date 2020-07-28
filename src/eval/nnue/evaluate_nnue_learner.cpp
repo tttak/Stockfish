@@ -32,6 +32,8 @@
 #include "trainer/features/factorizer_pp.h"
 // HalfKPE4
 #include "trainer/features/factorizer_half_kpe4.h"
+// HalfKP_PieceCount
+#include "trainer/features/factorizer_half_kp_piececount.h"
 
 #include "trainer/trainer_feature_transformer.h"
 #include "trainer/trainer_input_slice.h"

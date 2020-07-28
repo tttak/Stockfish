@@ -2974,6 +2974,7 @@ void learn(Position&, istringstream& is)
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkpkfile_256x2_32_32          = false;
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32          = false;
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32            = false;
+	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_piececount_256x2_32_32    = false;
 
 	// If the absolute value of the evaluation value in the deep search of the teacher phase exceeds this value, that phase is discarded.
 	int eval_limit = 32000;
@@ -3121,6 +3122,7 @@ void learn(Position&, istringstream& is)
 		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkpkfile_256x2_32_32"         ) use_convert_from_halfkp_256x2_32_32_to_halfkpkfile_256x2_32_32          = true;
 		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32"         ) use_convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32          = true;
 		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32"           ) use_convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32            = true;
+		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_piececount_256x2_32_32"   ) use_convert_from_halfkp_256x2_32_32_to_halfkp_piececount_256x2_32_32    = true;
 
 		// Otherwise, it's a filename.
 		else
@@ -3367,6 +3369,19 @@ void learn(Position&, istringstream& is)
 		const std::uint32_t network_hash_value = 0x63337156;
 		const int multiply = 1;
 		const int other_features = 205120;
+
+		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_convert_from_halfkp_256x2_32_32_to_halfkp_piececount_256x2_32_32)
+	{
+		const std::string architecture = "Features=HalfKP_PieceCount(Friend)[164096->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+		const std::uint32_t version            = 0x7af32f16;
+		const std::uint32_t header_hash_value  = 0x7e42a6ee;
+		const std::uint32_t feature_hash_value = 0x1d71d7b8;
+		const std::uint32_t network_hash_value = 0x63337156;
+		const int multiply = 4;
+		const int other_features = 0;
 
 		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
 		return;
