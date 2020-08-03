@@ -2906,6 +2906,130 @@ void convert_from_halfkp_256x2_32_32(const std::string in_filename, const std::s
 	std::cout << "convert_from_halfkp_256x2_32_32 END" << std::endl;
 }
 
+template <typename IntType>
+IntType Round(double value) {
+	return static_cast<IntType>(std::floor(value + 0.5));
+}
+
+template <typename IntType>
+void merge(std::vector<IntType>& in1, std::vector<IntType>& in2, std::vector<IntType>& out, int size, double ratio) {
+	for (int i = 0; i < size; i++) {
+		out[i] = Round<IntType>((double)in1[i] * ratio + (double)in2[i] * (1 - ratio));
+	}
+}
+
+void evalmerge_halfkp_256x2_32_32(const std::string in1_filename, const std::string in2_filename, const std::string out_filename, int ratio_feature, int ratio_network) {
+	std::cout << "evalmerge_halfkp_256x2_32_32 START" << std::endl;
+	std::cout << "in1 : " << in1_filename << std::endl;
+	std::cout << "in2 : " << in2_filename << std::endl;
+	std::cout << "feature in1:" << ratio_feature << "%, in2:" << (100 - ratio_feature) << "%" << std::endl;
+	std::cout << "network in1:" << ratio_network << "%, in2:" << (100 - ratio_network) << "%" << std::endl;
+	std::cout << "out : " << out_filename << std::endl;
+
+	std::vector<char>    buff1_in1(100000);
+	std::vector<char>    buff1_in2(100000);
+	std::vector<char>    buff1_out(100000);
+
+	std::vector<int16_t> buff2_in1(41024 * 256);
+	std::vector<int16_t> buff2_in2(41024 * 256);
+	std::vector<int16_t> buff2_out(41024 * 256);
+
+	std::vector<int32_t> buff4_in1(100000);
+	std::vector<int32_t> buff4_in2(100000);
+	std::vector<int32_t> buff4_out(100000);
+
+	int size;
+	const std::string halfkp_architecture = "Features=HalfKP(Friend)[41024->256x2],Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-32](ClippedReLU[32](AffineTransform[32<-512](InputSlice[512(0:512)])))))";
+
+	std::ifstream ifs1(in1_filename, std::ios::binary);
+	std::ifstream ifs2(in2_filename, std::ios::binary);
+	std::ofstream ofs (out_filename, std::ios::binary);
+
+	// ----- Header
+	size = 4 * 3 + halfkp_architecture.length();
+	ifs1.read(buff1_in1.data(), size);
+	ifs2.read(buff1_in2.data(), size);
+	ofs.write(buff1_in1.data(), size);
+
+	// ----- feature_transformer
+	// Header
+	size = 4;
+	ifs1.read(buff1_in1.data(), size);
+	ifs2.read(buff1_in2.data(), size);
+	ofs.write(buff1_in1.data(), size);
+
+	// Bias
+	size = 2 * 256;
+	ifs1.read((char*)buff2_in1.data(), size);
+	ifs2.read((char*)buff2_in2.data(), size);
+	merge<int16_t>(buff2_in1, buff2_in2, buff2_out, size / 2, ratio_feature / 100.0f);
+	ofs.write((char*)buff2_out.data(), size);
+
+	// Weight
+	size = 2 * 41024 * 256;
+	ifs1.read((char*)buff2_in1.data(), size);
+	ifs2.read((char*)buff2_in2.data(), size);
+	merge<int16_t>(buff2_in1, buff2_in2, buff2_out, size / 2, ratio_feature / 100.0f);
+	ofs.write((char*)buff2_out.data(), size);
+
+	// ----- network
+	// Header
+	size = 4;
+	ifs1.read(buff1_in1.data(), size);
+	ifs2.read(buff1_in2.data(), size);
+	ofs.write(buff1_in1.data(), size);
+
+	// Bias
+	size = 4 * 32;
+	ifs1.read((char*)buff4_in1.data(), size);
+	ifs2.read((char*)buff4_in2.data(), size);
+	merge<int32_t>(buff4_in1, buff4_in2, buff4_out, size / 4, ratio_network / 100.0f);
+	ofs.write((char*)buff4_out.data(), size);
+
+	// Weight
+	size = 1 * 512 * 32;
+	ifs1.read(buff1_in1.data(), size);
+	ifs2.read(buff1_in2.data(), size);
+	merge<char>(buff1_in1, buff1_in2, buff1_out, size / 1, ratio_network / 100.0f);
+	ofs.write(buff1_out.data(), size);
+
+	// Bias
+	size = 4 * 32;
+	ifs1.read((char*)buff4_in1.data(), size);
+	ifs2.read((char*)buff4_in2.data(), size);
+	merge<int32_t>(buff4_in1, buff4_in2, buff4_out, size / 4, ratio_network / 100.0f);
+	ofs.write((char*)buff4_out.data(), size);
+
+	// Weight
+	size = 1 * 32 * 32;
+	ifs1.read(buff1_in1.data(), size);
+	ifs2.read(buff1_in2.data(), size);
+	merge<char>(buff1_in1, buff1_in2, buff1_out, size / 1, ratio_network / 100.0f);
+	ofs.write(buff1_out.data(), size);
+
+	// Bias
+	size = 4 * 1;
+	ifs1.read((char*)buff4_in1.data(), size);
+	ifs2.read((char*)buff4_in2.data(), size);
+	merge<int32_t>(buff4_in1, buff4_in2, buff4_out, size / 4, ratio_network / 100.0f);
+	ofs.write((char*)buff4_out.data(), size);
+
+	// Weight
+	size = 1 * 32 * 1;
+	ifs1.read(buff1_in1.data(), size);
+	ifs2.read(buff1_in2.data(), size);
+	merge<char>(buff1_in1, buff1_in2, buff1_out, size / 1, ratio_network / 100.0f);
+	ofs.write(buff1_out.data(), size);
+
+	// -----
+
+	ifs1.close();
+	ifs2.close();
+	ofs.close();
+
+	std::cout << "evalmerge_halfkp_256x2_32_32 END" << std::endl;
+}
+
 // Learning from the generated game record
 void learn(Position&, istringstream& is)
 {
@@ -2961,9 +3085,13 @@ void learn(Position&, istringstream& is)
 	// convert teacher in pgn-extract format to Yaneura King's bin
 	bool use_convert_bin_from_pgn_extract = false;
 	bool pgn_eval_side_to_move = false;
+	// evalmerge options
+	int ratio_feature = 50;
+	int ratio_network = 50;
 	// File name to write in those cases (default is "shuffled_sfen.bin")
 	string output_file_name = "shuffled_sfen.bin";
 
+	// convert
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32             = false;
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_cr_ep_256x2_32_32         = false;
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_mobility_256x2_32_32      = false;
@@ -2975,6 +3103,9 @@ void learn(Position&, istringstream& is)
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32          = false;
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32            = false;
 	bool use_convert_from_halfkp_256x2_32_32_to_halfkp_piececount_256x2_32_32    = false;
+
+	// evalmerge
+	bool use_evalmerge_halfkp_256x2_32_32 = false;
 
 	// If the absolute value of the evaluation value in the deep search of the teacher phase exceeds this value, that phase is discarded.
 	int eval_limit = 32000;
@@ -3123,6 +3254,13 @@ void learn(Position&, istringstream& is)
 		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32"         ) use_convert_from_halfkp_256x2_32_32_to_halfkpkrank_256x2_32_32          = true;
 		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32"           ) use_convert_from_halfkp_256x2_32_32_to_halfkp_pp_256x2_32_32            = true;
 		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkp_piececount_256x2_32_32"   ) use_convert_from_halfkp_256x2_32_32_to_halfkp_piececount_256x2_32_32    = true;
+
+		// example: learn evalmerge_halfkp_256x2_32_32 nn_in1.bin nn_in2.bin output_file_name nn_out.bin ratio_feature 70 ratio_network 60
+		// --> feature in1:70%, in2:30%
+		//     network in1:60%, in2:40%
+		else if (option == "evalmerge_halfkp_256x2_32_32") use_evalmerge_halfkp_256x2_32_32 = true;
+		else if (option == "ratio_feature") is >> ratio_feature;
+		else if (option == "ratio_network") is >> ratio_network;
 
 		// Otherwise, it's a filename.
 		else
@@ -3384,6 +3522,11 @@ void learn(Position&, istringstream& is)
 		const int other_features = 0;
 
 		convert_from_halfkp_256x2_32_32(filenames[0], output_file_name, architecture, version, header_hash_value, feature_hash_value, network_hash_value, multiply, other_features);
+		return;
+	}
+	if (use_evalmerge_halfkp_256x2_32_32)
+	{
+		evalmerge_halfkp_256x2_32_32(filenames[0], filenames[1], output_file_name, ratio_feature, ratio_network);
 		return;
 	}
 
