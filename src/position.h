@@ -74,6 +74,11 @@ struct StateInfo {
   int allPiecesCount;
 #endif
 
+#if defined(USE_MOBILITY_COUNT_IN_STATEINFO)
+  // [Color][PieceType(Knight, Bishop, Rook, Queen)][Piece Count]
+  int mobilityCount[2][4][2];
+#endif
+
 #endif  // defined(EVAL_NNUE)
 };
 

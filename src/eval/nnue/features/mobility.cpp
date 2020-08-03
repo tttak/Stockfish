@@ -18,6 +18,42 @@ namespace Eval {
         // do nothing if array size is small to avoid compiler warning
         if (RawFeatures::kMaxActiveDimensions < kMaxActiveDimensions) return;
 
+        // mobilityCount[PieceType(Knight, Bishop, Rook, Queen)][Piece Count]
+        int mobilityCount[4][2];
+        CalcMobilityCount(mobilityCount, pos, perspective);
+
+        for (int pt_index = 0; pt_index < 4; pt_index++) {
+          for (int piece_count = 0; piece_count < 2; piece_count++) {
+            active->push_back(MakeIndex(pt_index, piece_count, mobilityCount[pt_index][piece_count]));
+            pos.state()->mobilityCount[perspective][pt_index][piece_count] = mobilityCount[pt_index][piece_count];
+          }
+        }
+      }
+
+      // Get a list of indices whose values have changed from the previous one in the feature quantity
+      void Mobility::AppendChangedIndices(
+        const Position& pos, Color perspective,
+        IndexList* removed, IndexList* added) {
+
+        // mobilityCount[PieceType(Knight, Bishop, Rook, Queen)][Piece Count]
+        int mobilityCount[4][2];
+        CalcMobilityCount(mobilityCount, pos, perspective);
+
+        const auto prev = pos.state()->previous;
+
+        for (int pt_index = 0; pt_index < 4; pt_index++) {
+          for (int piece_count = 0; piece_count < 2; piece_count++) {
+            if (prev->mobilityCount[perspective][pt_index][piece_count] != mobilityCount[pt_index][piece_count]) {
+              removed->push_back(MakeIndex(pt_index, piece_count, prev->mobilityCount[perspective][pt_index][piece_count]));
+              added  ->push_back(MakeIndex(pt_index, piece_count, mobilityCount[pt_index][piece_count]));
+            }
+            pos.state()->mobilityCount[perspective][pt_index][piece_count] = mobilityCount[pt_index][piece_count];
+          }
+        }
+      }
+
+      // CalcMobilityCount
+      void Mobility::CalcMobilityCount(int mobilityCount[4][2], const Position& pos, Color perspective) {
         Direction Up   = pawn_push(perspective);
         Direction Down = -Up;
         Bitboard LowRanks = (perspective == WHITE ? Rank2BB | Rank3BB : Rank7BB | Rank6BB);
@@ -32,23 +68,15 @@ namespace Eval {
         // or controlled by enemy pawns are excluded from the mobility area.
         Bitboard mobilityArea = ~(b | pos.pieces(perspective, KING, QUEEN) | pos.blockers_for_king(perspective) | pawnAttacks_them);
 
-        AppendActiveIndices<KNIGHT>(pos, perspective, active, mobilityArea);
-        AppendActiveIndices<BISHOP>(pos, perspective, active, mobilityArea);
-        AppendActiveIndices<ROOK>  (pos, perspective, active, mobilityArea);
-        AppendActiveIndices<QUEEN> (pos, perspective, active, mobilityArea);
+        CalcMobilityCount<KNIGHT>(mobilityCount, pos, perspective, mobilityArea);
+        CalcMobilityCount<BISHOP>(mobilityCount, pos, perspective, mobilityArea);
+        CalcMobilityCount<ROOK>  (mobilityCount, pos, perspective, mobilityArea);
+        CalcMobilityCount<QUEEN> (mobilityCount, pos, perspective, mobilityArea);
       }
 
-      // Get a list of indices whose values ??have changed from the previous one in the feature quantity
-      void Mobility::AppendChangedIndices(
-        const Position& pos, Color perspective,
-        IndexList* removed, IndexList* added) {
-        // TODO : difference calculation
-        // Not implemented.
-        assert(false);
-      }
-
+      // CalcMobilityCount
       template<PieceType Pt>
-      void Mobility::AppendActiveIndices(const Position& pos, Color perspective, IndexList* active, const Bitboard& mobilityArea) {
+      void Mobility::CalcMobilityCount(int mobilityCount[4][2], const Position& pos, Color perspective, const Bitboard& mobilityArea) {
         const Square* pl = pos.squares<Pt>(perspective);
 
         Bitboard b;
@@ -63,7 +91,7 @@ namespace Eval {
 
           int mob = popcount(b & mobilityArea);
 
-          active->push_back(MakeIndex<Pt>(piece_count, mob + 1));
+          mobilityCount[Pt - 2][piece_count] = mob + 1;
           piece_count++;
 
           if (piece_count >= kMaxPieceCount) {
@@ -72,14 +100,14 @@ namespace Eval {
         }
 
         while (piece_count < kMaxPieceCount) {
-          active->push_back(MakeIndex<Pt>(piece_count, 0));
+          mobilityCount[Pt - 2][piece_count] = 0;
           piece_count++;
         }
       }
 
-      template<PieceType Pt>
-      IndexType Mobility::MakeIndex(int piece_count, int mob) {
-        return ((Pt - 2) * kMaxPieceCount + piece_count) * kMaxMobilityCount + mob;
+      // MakeIndex
+      IndexType Mobility::MakeIndex(int pt_index, int piece_count, int mobility_count) {
+        return (pt_index * kMaxPieceCount + piece_count) * kMaxMobilityCount + mobility_count;
       }
 
       // shift() moves a bitboard one step along direction D

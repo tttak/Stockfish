@@ -8,6 +8,8 @@
 #include "../../../evaluate.h"
 #include "features_common.h"
 
+#define USE_MOBILITY_COUNT_IN_STATEINFO
+
 namespace Eval {
 
   namespace NNUE {
@@ -34,23 +36,23 @@ namespace Eval {
         static constexpr IndexType kMaxActiveDimensions = kMaxPieceCount * 4;
 
         // Timing of full calculation instead of difference calculation
-        // TODO : difference calculation
-        static constexpr TriggerEvent kRefreshTrigger = TriggerEvent::kAnyPieceMoved;
+        static constexpr TriggerEvent kRefreshTrigger = TriggerEvent::kNone;
 
         // Get a list of indices with a value of 1 among the features
         static void AppendActiveIndices(const Position& pos, Color perspective,
           IndexList* active);
 
-        // Get a list of indices whose values ??have changed from the previous one in the feature quantity
+        // Get a list of indices whose values have changed from the previous one in the feature quantity
         static void AppendChangedIndices(const Position& pos, Color perspective,
           IndexList* removed, IndexList* added);
 
       private:
-        template<PieceType Pt>
-        static void AppendActiveIndices(const Position& pos, Color perspective, IndexList* active, const Bitboard& mobilityArea);
+        static void CalcMobilityCount(int mobilityCount[4][2], const Position& pos, Color perspective);
 
         template<PieceType Pt>
-        static IndexType MakeIndex(int piece_count, int mob);
+        static void CalcMobilityCount(int mobilityCount[4][2], const Position& pos, Color perspective, const Bitboard& mobilityArea);
+
+        static IndexType MakeIndex(int pt_index, int piece_count, int mobility_count);
 
         static Bitboard shift(Bitboard b, Direction D);
       };
