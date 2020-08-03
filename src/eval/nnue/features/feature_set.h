@@ -111,6 +111,7 @@ class FeatureSetBase {
               (dp.pieceNo[0] == PIECE_NUMBER_KING + ~perspective) || (pos.game_ply() == 41) || (pos.game_ply() == 81) || (pos.game_ply() == 121);
           break;
 
+#if defined(USE_PIECECOUNT_IN_STATEINFO)
         case TriggerEvent::kFriendKingMovedOrPieceCount_24_16_8:
           {
             const auto now = pos.state();
@@ -139,6 +140,7 @@ class FeatureSetBase {
                 );
           }
           break;
+#endif  // defined(USE_PIECECOUNT_IN_STATEINFO)
 
         case TriggerEvent::kAnyPieceMoved:
           reset[perspective] = true;
