@@ -8,6 +8,8 @@
 #include "../../../evaluate.h"
 #include "features_common.h"
 
+#define USE_PAWN_INDEX_IN_STATEINFO
+
 namespace Eval {
 
   namespace NNUE {
@@ -29,14 +31,13 @@ namespace Eval {
         static constexpr IndexType kMaxActiveDimensions = 8;
 
         // Timing of full calculation instead of difference calculation
-        // TODO : difference calculation
-        static constexpr TriggerEvent kRefreshTrigger = TriggerEvent::kAnyPieceMoved;
+        static constexpr TriggerEvent kRefreshTrigger = TriggerEvent::kNone;
 
         // Get a list of indices with a value of 1 among the features
         static void AppendActiveIndices(const Position& pos, Color perspective,
           IndexList* active);
 
-        // Get a list of indices whose values ??have changed from the previous one in the feature quantity
+        // Get a list of indices whose values have changed from the previous one in the feature quantity
         static void AppendChangedIndices(const Position& pos, Color perspective,
           IndexList* removed, IndexList* added);
 
@@ -51,6 +52,7 @@ namespace Eval {
         static IndexType MakeIndexOfNoPiece(int pawn_count);
 
       private:
+        static void CalcPawnIndex(int pawnIndex[8], const Position& pos, Color perspective);
         static Bitboard pawn_double_attacks_bb(Bitboard b, Color C);
         static Bitboard shift_(Bitboard b, Direction D);
       };

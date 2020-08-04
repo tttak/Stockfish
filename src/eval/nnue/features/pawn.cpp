@@ -18,6 +18,38 @@ namespace Eval {
         // do nothing if array size is small to avoid compiler warning
         if (RawFeatures::kMaxActiveDimensions < kMaxActiveDimensions) return;
 
+        // [pawn_count]
+        int pawnIndex[8];
+        CalcPawnIndex(pawnIndex, pos, perspective);
+
+        for (int pawn_count = 0; pawn_count < 8; pawn_count++) {
+          active->push_back(pawnIndex[pawn_count]);
+          pos.state()->pawnIndex[perspective][pawn_count] = pawnIndex[pawn_count];
+        }
+      }
+
+      // Get a list of indices whose values have changed from the previous one in the feature quantity
+      void Pawn::AppendChangedIndices(
+        const Position& pos, Color perspective,
+        IndexList* removed, IndexList* added) {
+
+        // [pawn_count]
+        int pawnIndex[8];
+        CalcPawnIndex(pawnIndex, pos, perspective);
+
+        const auto prev = pos.state()->previous;
+
+        for (int pawn_count = 0; pawn_count < 8; pawn_count++) {
+          if (prev->pawnIndex[perspective][pawn_count] != pawnIndex[pawn_count]) {
+            removed->push_back(prev->pawnIndex[perspective][pawn_count]);
+            added  ->push_back(pawnIndex[pawn_count]);
+          }
+          pos.state()->pawnIndex[perspective][pawn_count] = pawnIndex[pawn_count];
+        }
+      }
+
+      // CalcPawnIndex
+      void Pawn::CalcPawnIndex(int pawnIndex[8], const Position& pos, Color perspective) {
         Color Us     = perspective;
         Color Them   = ~Us;
         Direction Up = pawn_push(Us);
@@ -93,7 +125,7 @@ namespace Eval {
                       << ", index="      << index
                       << std::endl;
 #endif
-            active->push_back(index);
+            pawnIndex[pawn_count] = index;
             pawn_count++;
         }
 
@@ -105,18 +137,9 @@ namespace Eval {
                     << ", index="      << index
                     << std::endl;
 #endif
-          active->push_back(index);
+          pawnIndex[pawn_count] = index;
           pawn_count++;
         }
-      }
-
-      // Get a list of indices whose values ??have changed from the previous one in the feature quantity
-      void Pawn::AppendChangedIndices(
-        const Position& pos, Color perspective,
-        IndexList* removed, IndexList* added) {
-        // TODO : difference calculation
-        // Not implemented.
-        assert(false);
       }
 
       // MakeIndex

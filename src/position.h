@@ -79,6 +79,11 @@ struct StateInfo {
   int mobilityCount[2][4][2];
 #endif
 
+#if defined(USE_PAWN_INDEX_IN_STATEINFO)
+  // [Color][pawn_count]
+  int pawnIndex[2][8];
+#endif
+
 #endif  // defined(EVAL_NNUE)
 };
 
