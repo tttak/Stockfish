@@ -76,9 +76,7 @@ namespace Eval::NNUE::Features {
       if (dp.pieceId[i] >= PIECE_ID_KING) continue;
       const auto old_p = static_cast<PieceSquare>(
           dp.old_piece[i].from[perspective]);
-      if (old_p != PS_NONE) {
-        removed->push_back(MakeIndex(sq_target_k, old_p));
-      }
+      removed->push_back(MakeIndex(sq_target_k, old_p));
       const auto new_p = static_cast<PieceSquare>(
           dp.new_piece[i].from[perspective]);
       if (new_p != PS_NONE) {
