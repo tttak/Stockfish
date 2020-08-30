@@ -4,6 +4,7 @@
 #if defined(EVAL_LEARN)
 
 #include <functional>
+#include <mutex>
 
 #include "../misc.h"
 #include "../learn/learn.h"
@@ -16,7 +17,7 @@
 // Derive and use this class.
 struct MultiThink
 {
-	MultiThink() : prng(21120903)
+	MultiThink() : prng(std::chrono::system_clock::now().time_since_epoch().count())
 	{
 		loop_count = 0;
 	}

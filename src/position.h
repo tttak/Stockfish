@@ -1,8 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
-  Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2004-2020 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -23,16 +21,14 @@
 
 #include <cassert>
 #include <deque>
-#include <iostream>
 #include <memory> // For std::unique_ptr
 #include <string>
 
 #include "bitboard.h"
 #include "evaluate.h"
-#include "misc.h"
 #include "types.h"
 
-#include "eval/nnue/nnue_accumulator.h"
+#include "nnue/nnue_accumulator.h"
 
 
 /// StateInfo struct stores information needed to restore a Position object to
@@ -60,8 +56,9 @@ struct StateInfo {
   Bitboard   checkSquares[PIECE_TYPE_NB];
   int        repetition;
 
-#if defined(EVAL_NNUE)
+  // Used by NNUE
   Eval::NNUE::Accumulator accumulator;
+<<<<<<< HEAD
 
    // For management of evaluation value difference calculation
   Eval::DirtyPiece dirtyPiece;
@@ -85,6 +82,9 @@ struct StateInfo {
 #endif
 
 #endif  // defined(EVAL_NNUE)
+=======
+  DirtyPiece dirtyPiece;
+>>>>>>> nodchip/master
 };
 
 
@@ -102,7 +102,7 @@ typedef std::unique_ptr<std::deque<StateInfo>> StateListPtr;
 class Thread;
 
 // packed sfen
-struct PackedSfen { uint8_t data[32]; };
+struct PackedSfen { uint8_t data[32]; }; 
 
 class Position {
 public:
@@ -142,6 +142,7 @@ public:
   Bitboard checkers() const;
   Bitboard blockers_for_king(Color c) const;
   Bitboard check_squares(PieceType pt) const;
+  Bitboard pinners(Color c) const;
   bool is_discovery_check_on_king(Color c, Move m) const;
 
   // Attacks to/from a given square
@@ -198,16 +199,8 @@ public:
   bool pos_is_ok() const;
   void flip();
 
-#if defined(EVAL_NNUE) || defined(EVAL_LEARN)
-  // --- StateInfo
-
-  // Returns the StateInfo corresponding to the current situation.
-  // For example, if state()->capturedPiece, the pieces captured in the previous phase are stored.
-  StateInfo* state() const { return st; }
-
-  // Information such as where and which piece number is used for the evaluation function.
-  const Eval::EvalList* eval_list() const { return &evalList; }
-#endif  // defined(EVAL_NNUE) || defined(EVAL_LEARN)
+  // Used by NNUE
+  StateInfo* state() const;
 
 #if defined(EVAL_LEARN)
   // --sfenization helper
@@ -216,7 +209,7 @@ public:
   // Do not include gamePly in pack.
   void sfen_pack(PackedSfen& sfen);
 
-  // Å™ It is slow to go through sfen, so I made a function to set packed sfen directly.
+  // It is slow to go through sfen, so I made a function to set packed sfen directly.
   // Equivalent to pos.set(sfen_unpack(data),si,th);.
   // If there is a problem with the passed phase and there is an error, non-zero is returned.
   // PackedSfen does not include gamePly so it cannot be restored. If you want to set it, specify it with an argument.
@@ -242,11 +235,6 @@ private:
   template<bool Do>
   void do_castling(Color us, Square from, Square& to, Square& rfrom, Square& rto);
 
-#if defined(EVAL_NNUE)
-  // Returns the PieceNumber of the piece in the sq box on the board.
-  PieceNumber piece_no_of(Square sq) const;
-#endif  // defined(EVAL_NNUE)
-
   // Data members
   Piece board[SQUARE_NB];
   Bitboard byTypeBB[PIECE_TYPE_NB];
@@ -263,11 +251,6 @@ private:
   Thread* thisThread;
   StateInfo* st;
   bool chess960;
-
-#if defined(EVAL_NNUE) || defined(EVAL_LEARN)
-  // List of pieces used in the evaluation function
-  Eval::EvalList evalList;
-#endif  // defined(EVAL_NNUE) || defined(EVAL_LEARN)
 };
 
 namespace PSQT {
@@ -368,6 +351,10 @@ inline Bitboard Position::checkers() const {
 
 inline Bitboard Position::blockers_for_king(Color c) const {
   return st->blockersForKing[c];
+}
+
+inline Bitboard Position::pinners(Color c) const {
+  return st->pinners[c];
 }
 
 inline Bitboard Position::check_squares(PieceType pt) const {
@@ -504,6 +491,11 @@ inline void Position::move_piece(Square from, Square to) {
 
 inline void Position::do_move(Move m, StateInfo& newSt) {
   do_move(m, newSt, gives_check(m));
+}
+
+inline StateInfo* Position::state() const {
+
+  return st;
 }
 
 #endif // #ifndef POSITION_H_INCLUDED

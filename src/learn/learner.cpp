@@ -15,6 +15,7 @@
 
 #if defined(EVAL_LEARN)
 
+#include <chrono>
 #include <filesystem>
 #include <random>
 #include <regex>
@@ -22,6 +23,7 @@
 #include "learn.h"
 #include "multi_think.h"
 #include "../uci.h"
+#include "../syzygy/tbprobe.h"
 
 // evaluate header for learning
 #include "../eval/evaluate_common.h"
@@ -81,7 +83,8 @@
 #include "multi_think.h"
 
 #if defined(EVAL_NNUE)
-#include "../eval/nnue/evaluate_nnue_learner.h"
+#include "../nnue/evaluate_nnue_learner.h"
+#include <climits>
 #include <shared_mutex>
 #endif
 
@@ -127,10 +130,31 @@ namespace Learner
 // Phase array: PSVector stands for packed sfen vector.
 typedef std::vector<PackedSfenValue> PSVector;
 
-bool use_draw_in_training_data_generation = false;
-bool use_draw_in_training = false;
-bool use_draw_in_validation = false;
-bool use_hash_in_training = true;
+bool write_out_draw_game_in_training_data_generation = false;
+bool use_draw_games_in_training = false;
+bool use_draw_games_in_validation = false;
+bool skip_duplicated_positions_in_training = true;
+bool detect_draw_by_consecutive_low_score = false;
+bool detect_draw_by_insufficient_mating_material = false;
+// 1.0 / PawnValueEg / 4.0 * log(10.0)
+double winning_probability_coefficient = 0.00276753015984861260098316280611;
+// Score scale factors.  ex) If we set src_score_min_value = 0.0,
+// src_score_max_value = 1.0, dest_score_min_value = 0.0,
+// dest_score_max_value = 10000.0, [0.0, 1.0] will be scaled to [0, 10000].
+double src_score_min_value = 0.0;
+double src_score_max_value = 1.0;
+double dest_score_min_value = 0.0;
+double dest_score_max_value = 1.0;
+// Assume teacher signals are the scores of deep searches, and convert them into winning
+// probabilities in the trainer. Sometimes we want to use the winning probabilities in the training
+// data directly. In those cases, we set false to this variable.
+bool convert_teacher_signal_to_winning_probability = true;
+// Use raw NNUE eval value in the Eval::evaluate(). If hybrid eval is enabled, training data
+// generation and training don't work well.
+// https://discordapp.com/channels/435943710472011776/733545871911813221/748524079761326192
+bool use_raw_nnue_eval = true;
+// Using WDL with win rate model instead of sigmoid
+bool use_wdl = false;
 
 // -----------------------------------
 // write phase file
@@ -407,6 +431,12 @@ void MultiThinkGenSfen::thread_worker(size_t thread_id)
 	// end flag
 	bool quit = false;
 
+	// Variables for draw adjudication.
+	// Todo: Make this as an option.
+	int adj_draw_ply = 80; // start the adjudication when ply reaches this value
+	int adj_draw_cnt = 8;  // 4 move scores for each side have to be checked
+	int adj_draw_score = 0;  // move score in CP
+
 	// repeat until the specified number of times
 	while (!quit)
 	{
@@ -508,6 +538,9 @@ void MultiThinkGenSfen::thread_worker(size_t thread_id)
 		// When random_move_minply == -1, random moves are performed continuously, so use it at this time.
 		int random_move_c = 0;
 
+		// Save history of move scores for adjudication
+		vector<int> move_hist_scores;
+
 		// ply: steps from the initial stage
 		for (int ply = 0; ; ++ply)
 		{
@@ -520,7 +553,7 @@ void MultiThinkGenSfen::thread_worker(size_t thread_id)
 			// has it reached the length
 			if (ply >= MAX_PLY2)
 			{
-				if (use_draw_in_training_data_generation) {
+				if (write_out_draw_game_in_training_data_generation) {
 				// Write out as win/loss = draw.
 				// This way it is harder to allow the opponent to enter the ball when I enter (may)
 				flush_psv(0);
@@ -529,24 +562,101 @@ void MultiThinkGenSfen::thread_worker(size_t thread_id)
 			}
 
       if (pos.is_draw(ply)) {
-		  if (use_draw_in_training_data_generation) {
+		  if (write_out_draw_game_in_training_data_generation) {
 			  // Write if draw.
 			  flush_psv(0);
 		  }
         break;
       }
 
-			// Isn't all pieces stuck and stuck?
-			if (MoveList<LEGAL>(pos).size() == 0)
-			{
-        // (write up to the previous phase of this phase)
-        // Write the positions other than this position if checkmated.
-                if (pos.checkers()) // Mate
-                    flush_psv(-1);
-				else if (use_draw_in_training_data_generation) {
+			// Initialize the Syzygy Ending Tablebase and sort the moves.
+			Search::RootMoves rootMoves;
+			for (const auto& m : MoveList<LEGAL>(pos))
+				rootMoves.emplace_back(m);
+			if (!rootMoves.empty())
+				Tablebases::rank_root_moves(pos, rootMoves);
+
+			// If there is no legal move, terminate the game if position
+			// is mate or a stalemate.
+			else {
+				if (pos.checkers()) // Mate
+					flush_psv(-1);
+				else if (write_out_draw_game_in_training_data_generation) {
 					flush_psv(0); // Stalemate
 				}
 				break;
+			}
+
+			// Adjudicate game to a draw if the last 4 scores of each engine is 0.
+			if (detect_draw_by_consecutive_low_score) {
+				if (ply >= adj_draw_ply) {
+					int draw_cnt = 0;
+					bool is_adj_draw = false;
+
+					for (vector<int>::reverse_iterator it = move_hist_scores.rbegin();
+						it != move_hist_scores.rend(); ++it) 
+					{
+						if (abs(*it) <= adj_draw_score)
+							draw_cnt++;
+						else
+							break;  // score should be successive
+
+						if (draw_cnt >= adj_draw_cnt) {
+							is_adj_draw = true;
+							break;
+						}
+					}
+
+					if (is_adj_draw) {
+						if (write_out_draw_game_in_training_data_generation)
+							flush_psv(0);
+						break;
+					}
+				}
+			}
+
+			// Draw by insufficient mating material
+			if (detect_draw_by_insufficient_mating_material) {
+				if (pos.count<ALL_PIECES>() <= 4) {
+					int pcnt = pos.count<ALL_PIECES>();
+					// (1) KvK
+					if (pcnt == 2) {
+						if (write_out_draw_game_in_training_data_generation)
+							flush_psv(0);
+						break;
+					}
+					// (2) KvK + 1 minor piece
+					if (pcnt == 3) {
+						int minor_pc = pos.count<BISHOP>(WHITE) + pos.count<KNIGHT>(WHITE) +
+							pos.count<BISHOP>(BLACK) + pos.count<KNIGHT>(BLACK);
+						if (minor_pc == 1) {
+							if (write_out_draw_game_in_training_data_generation)
+								flush_psv(0);
+							break;
+						}
+					}
+					// (3) KBvKB, bishops of the same color
+					else if (pcnt == 4) {
+						if (pos.count<BISHOP>(WHITE) == 1 && pos.count<BISHOP>(BLACK) == 1) {
+							// Color of bishops is black.
+							if ((pos.pieces(WHITE, BISHOP) & DarkSquares)
+								&& (pos.pieces(BLACK, BISHOP) & DarkSquares))
+							{
+								if (write_out_draw_game_in_training_data_generation)
+									flush_psv(0);
+								break;
+							}
+							// Color of bishops is white.
+							if ((pos.pieces(WHITE, BISHOP) & ~DarkSquares)
+								&& (pos.pieces(BLACK, BISHOP) & ~DarkSquares))
+							{
+								if (write_out_draw_game_in_training_data_generation)
+									flush_psv(0);
+								break;
+							}
+						}
+					}
+				}
 			}
 
 			//// constant track
@@ -605,15 +715,8 @@ void MultiThinkGenSfen::thread_worker(size_t thread_id)
 					break;
 				}
 
-				// Processing according to each thousand-day hand.
-
-        if (pos.is_draw(0)) {
-			if (use_draw_in_training_data_generation) {
-				// Write if draw.
-				flush_psv(0);
-			}
-          break;
-        }
+				// Save the move score for adjudication.
+				move_hist_scores.push_back(value1);
 
 				// Use PV's move to the leaf node and use the value that evaluated() is called on that leaf node.
 				auto evaluate_leaf = [&](Position& pos , vector<Move>& pv)
@@ -642,18 +745,26 @@ void MultiThinkGenSfen::thread_worker(size_t thread_id)
 						// If the depth is 8 or more, it seems faster not to calculate this difference.
 #if defined(EVAL_NNUE)
             if (depth < 8)
-              Eval::evaluate_with_no_return(pos);
+              Eval::NNUE::update_eval(pos);
 #endif  // defined(EVAL_NNUE)
 					}
 
 					// reach leaf
-					// cout << pos;
-
-					auto v = Eval::evaluate(pos);
+					Value v;
+					if (pos.checkers()) {
+						// Sometime a king is checked.  An example is a case that a checkmate is
+						// found in the search.  If Eval::evaluate() is called whne a king is
+						// checked, classic eval crashes by an assertion.  To avoid crashes, return
+						// value1 instead of the score of the PV leaf.
+						v = value1;
+					}
+					else {
+						v = Eval::evaluate(pos);
 					// evaluate() returns the evaluation value on the turn side, so
 					// If it's a turn different from root_color, you must invert v and return it.
 					if (rootColor != pos.side_to_move())
 						v = -v;
+					}
 
 					// Rewind.
 					// Is it C++x14, and isn't there even foreach to turn in reverse?
@@ -840,7 +951,7 @@ void MultiThinkGenSfen::thread_worker(size_t thread_id)
 			pos.do_move(m, states[ply]);
 
 			// Call node evaluate() for each difference calculation.
-			Eval::evaluate_with_no_return(pos);
+			Eval::NNUE::update_eval(pos);
 
 		} // for (int ply = 0; ; ++ply)
 
@@ -953,8 +1064,16 @@ void gen_sfen(Position&, istringstream& is)
 			is >> save_every;
 		else if (token == "random_file_name")
 			is >> random_file_name;
-		else if (token == "use_draw_in_training_data_generation")
-			is >> use_draw_in_training_data_generation;
+		// Accept also the old option name.
+		else if (token == "use_draw_in_training_data_generation" || token == "write_out_draw_game_in_training_data_generation")
+			is >> write_out_draw_game_in_training_data_generation;
+		// Accept also the old option name.
+		else if (token == "use_game_draw_adjudication" || token == "detect_draw_by_consecutive_low_score")
+			is >> detect_draw_by_consecutive_low_score;
+		else if (token == "detect_draw_by_insufficient_mating_material")
+			is >> detect_draw_by_insufficient_mating_material;
+		else if (token == "use_raw_nnue_eval")
+			is >> use_raw_nnue_eval;
 		else
 			cout << "Error! : Illegal token " << token << endl;
 	}
@@ -974,8 +1093,8 @@ void gen_sfen(Position&, istringstream& is)
 	if (random_file_name)
 	{
 		// Give a random number to output_file_name at this point.
-    std::random_device seed_gen;
-    PRNG r(seed_gen());
+		// Do not use std::random_device().  Because it always the same integers on MinGW.
+		PRNG r(std::chrono::system_clock::now().time_since_epoch().count());
 		// Just in case, reassign the random numbers.
 		for(int i=0;i<10;++i)
 			r.rand(1);
@@ -994,7 +1113,7 @@ void gen_sfen(Position&, istringstream& is)
 		<< "  loop_max = " << loop_max << endl
 		<< "  eval_limit = " << eval_limit << endl
 		<< "  thread_num (set by USI setoption) = " << thread_num << endl
-		<< "  book_moves (set by USI setoption) = " << Options["BookMoves"] << endl
+		//<< "  book_moves (set by USI setoption) = " << Options["BookMoves"] << endl
 		<< "  random_move_minply     = " << random_move_minply << endl
 		<< "  random_move_maxply     = " << random_move_maxply << endl
 		<< "  random_move_count      = " << random_move_count << endl
@@ -1007,7 +1126,13 @@ void gen_sfen(Position&, istringstream& is)
 		<< "  output_file_name       = " << output_file_name << endl
 		<< "  use_eval_hash          = " << use_eval_hash << endl
 		<< "  save_every             = " << save_every << endl
-		<< "  random_file_name       = " << random_file_name << endl;
+		<< "  random_file_name       = " << random_file_name << endl
+		<< "  write_out_draw_game_in_training_data_generation = " << write_out_draw_game_in_training_data_generation << endl
+		<< "  detect_draw_by_consecutive_low_score = " << detect_draw_by_consecutive_low_score << endl
+		<< "  detect_draw_by_insufficient_mating_material = " << detect_draw_by_insufficient_mating_material << endl;
+
+	// Show if the training data generator uses NNUE.
+	Eval::verify_NNUE();
 
 	// Create and execute threads as many as Options["Threads"].
 	{
@@ -1059,8 +1184,47 @@ double winning_percentage(double value)
 	// 1/(1+10^(-Eval/4))
 	// = 1/(1+e^(-Eval/4*ln(10))
 	// = sigmoid(Eval/4*ln(10))
-	return sigmoid(value / PawnValueEg / 4.0 * log(10.0));
+	return sigmoid(value * winning_probability_coefficient);
 }
+
+// A function that converts the evaluation value to the winning rate [0,1]
+double winning_percentage_wdl(double value, int ply)
+{
+	double wdl_w = UCI::win_rate_model_double( value, ply);
+	double wdl_l = UCI::win_rate_model_double(-value, ply);
+	double wdl_d = 1000.0 - wdl_w - wdl_l;
+
+	return (wdl_w + wdl_d / 2.0) / 1000.0;
+}
+
+// A function that converts the evaluation value to the winning rate [0,1]
+double winning_percentage(double value, int ply)
+{
+	if (use_wdl) {
+		return winning_percentage_wdl(value, ply);
+	}
+	else {
+		return winning_percentage(value);
+	}
+}
+
+double calc_cross_entropy_of_winning_percentage(double deep_win_rate, double shallow_eval, int ply)
+{
+	double p = deep_win_rate;
+	double q = winning_percentage(shallow_eval, ply);
+	return -p * std::log(q) - (1 - p) * std::log(1 - q);
+}
+
+double calc_d_cross_entropy_of_winning_percentage(double deep_win_rate, double shallow_eval, int ply)
+{
+	constexpr double epsilon = 0.000001;
+	double y1 = calc_cross_entropy_of_winning_percentage(deep_win_rate, shallow_eval          , ply);
+	double y2 = calc_cross_entropy_of_winning_percentage(deep_win_rate, shallow_eval + epsilon, ply);
+
+	// Divide by the winning_probability_coefficient to match scale with the sigmoidal win rate
+	return ((y2 - y1) / epsilon) / winning_probability_coefficient;
+}
+
 double dsigmoid(double x)
 {
 	// Sigmoid function
@@ -1150,42 +1314,72 @@ double ELMO_LAMBDA = 0.33;
 double ELMO_LAMBDA2 = 0.33;
 double ELMO_LAMBDA_LIMIT = 32000;
 
-double calc_grad(Value deep, Value shallow , const PackedSfenValue& psv)
+double calc_grad(Value teacher_signal, Value shallow , const PackedSfenValue& psv)
 {
 	// elmo (WCSC27) method
 	// Correct with the actual game wins and losses.
 
-	const double q = winning_percentage(shallow);
-	const double p = winning_percentage(deep);
+	// Training Formula · Issue #71 · nodchip/Stockfish https://github.com/nodchip/Stockfish/issues/71
+	double scaled_teacher_signal = teacher_signal;
+	// Normalize to [0.0, 1.0].
+	scaled_teacher_signal = (scaled_teacher_signal - src_score_min_value) / (src_score_max_value - src_score_min_value);
+	// Scale to [dest_score_min_value, dest_score_max_value].
+	scaled_teacher_signal = scaled_teacher_signal * (dest_score_max_value - dest_score_min_value) + dest_score_min_value;
+
+	const double q = winning_percentage(shallow, psv.gamePly);
+	// Teacher winning probability.
+	double p = scaled_teacher_signal;
+	if (convert_teacher_signal_to_winning_probability) {
+		p = winning_percentage(scaled_teacher_signal, psv.gamePly);
+	}
 
 	// Use 1 as the correction term if the expected win rate is 1, 0 if you lose, and 0.5 if you draw.
 	// game_result = 1,0,-1 so add 1 and divide by 2.
 	const double t = double(psv.game_result + 1) / 2;
 
 	// If the evaluation value in deep search exceeds ELMO_LAMBDA_LIMIT, apply ELMO_LAMBDA2 instead of ELMO_LAMBDA.
-	const double lambda = (abs(deep) >= ELMO_LAMBDA_LIMIT) ? ELMO_LAMBDA2 : ELMO_LAMBDA;
+	const double lambda = (abs(teacher_signal) >= ELMO_LAMBDA_LIMIT) ? ELMO_LAMBDA2 : ELMO_LAMBDA;
 
-	// Use the actual win rate as a correction term.
-	// This is the idea of ​​elmo (WCSC27), modern O-parts.
-	const double grad = lambda * (q - p) + (1.0 - lambda) * (q - t);
+	double grad;
+	if (use_wdl) {
+		double dce_p = calc_d_cross_entropy_of_winning_percentage(p, shallow, psv.gamePly);
+		double dce_t = calc_d_cross_entropy_of_winning_percentage(t, shallow, psv.gamePly);
+		grad = lambda * dce_p + (1.0 - lambda) * dce_t;
+	}
+	else {
+		// Use the actual win rate as a correction term.
+		// This is the idea of ​​elmo (WCSC27), modern O-parts.
+		grad = lambda * (q - p) + (1.0 - lambda) * (q - t);
+	}
 
 	return grad;
 }
 
 // Calculate cross entropy during learning
 // The individual cross entropy of the win/loss term and win rate term of the elmo expression is returned to the arguments cross_entropy_eval and cross_entropy_win.
-void calc_cross_entropy(Value deep, Value shallow, const PackedSfenValue& psv,
+void calc_cross_entropy(Value teacher_signal, Value shallow, const PackedSfenValue& psv,
 	double& cross_entropy_eval, double& cross_entropy_win, double& cross_entropy,
 	double& entropy_eval, double& entropy_win, double& entropy)
 {
-	const double p /* teacher_winrate */ = winning_percentage(deep);
+	// Training Formula · Issue #71 · nodchip/Stockfish https://github.com/nodchip/Stockfish/issues/71
+	double scaled_teacher_signal = teacher_signal;
+	// Normalize to [0.0, 1.0].
+	scaled_teacher_signal = (scaled_teacher_signal - src_score_min_value) / (src_score_max_value - src_score_min_value);
+	// Scale to [dest_score_min_value, dest_score_max_value].
+	scaled_teacher_signal = scaled_teacher_signal * (dest_score_max_value - dest_score_min_value) + dest_score_min_value;
+
+	// Teacher winning probability.
+	double p = scaled_teacher_signal;
+	if (convert_teacher_signal_to_winning_probability) {
+		p = winning_percentage(scaled_teacher_signal);
+	}
 	const double q /* eval_winrate    */ = winning_percentage(shallow);
 	const double t = double(psv.game_result + 1) / 2;
 
 	constexpr double epsilon = 0.000001;
 
 	// If the evaluation value in deep search exceeds ELMO_LAMBDA_LIMIT, apply ELMO_LAMBDA2 instead of ELMO_LAMBDA.
-	const double lambda = (abs(deep) >= ELMO_LAMBDA_LIMIT) ? ELMO_LAMBDA2 : ELMO_LAMBDA;
+	const double lambda = (abs(teacher_signal) >= ELMO_LAMBDA_LIMIT) ? ELMO_LAMBDA2 : ELMO_LAMBDA;
 
 	const double m = (1.0 - lambda) * t + lambda * p;
 
@@ -1217,7 +1411,8 @@ double calc_grad(Value shallow, const PackedSfenValue& psv) {
 // Sfen reader
 struct SfenReader
 {
-	SfenReader(int thread_num) : prng((std::random_device())())
+	// Do not use std::random_device().  Because it always the same integers on MinGW.
+	SfenReader(int thread_num) : prng(std::chrono::system_clock::now().time_since_epoch().count())
 	{
 		packed_sfens.resize(thread_num);
 		total_read = 0;
@@ -1282,7 +1477,7 @@ struct SfenReader
 			{
 				if (eval_limit < abs(p.score))
 					continue;
-				if (!use_draw_in_validation && p.game_result == 0)
+				if (!use_draw_games_in_validation && p.game_result == 0)
 					continue;
 				sfen_for_mse.push_back(p);
 			} else {
@@ -1715,7 +1910,7 @@ void LearnerThink::calc_loss(size_t thread_id, uint64_t done)
 				for (size_t i = 0; i < pv.size(); ++i)
 				{
 					pos.do_move(pv[i], states[i]);
-					Eval::evaluate_with_no_return(pos);
+					Eval::NNUE::update_eval(pos);
 				}
 				shallow_value = (rootColor == pos.side_to_move()) ? Eval::evaluate(pos) : -Eval::evaluate(pos);
 				for (auto it = pv.rbegin(); it != pv.rend(); ++it)
@@ -1970,7 +2165,7 @@ void LearnerThink::thread_worker(size_t thread_id)
 			goto RetryRead;
 
 
-		if (!use_draw_in_training && ps.game_result == 0)
+		if (!use_draw_games_in_training && ps.game_result == 0)
 			goto RetryRead;
 
 
@@ -1999,13 +2194,13 @@ void LearnerThink::thread_worker(size_t thread_id)
 		{
 			auto key = pos.key();
 			// Exclude the phase used for rmse calculation.
-			if (sr.is_for_rmse(key) && use_hash_in_training)
+			if (sr.is_for_rmse(key) && skip_duplicated_positions_in_training)
 				goto RetryRead;
 
 			// Exclude the most recently used aspect.
 			auto hash_index = size_t(key & (sr.READ_SFEN_HASH_SIZE - 1));
 			auto key2 = sr.hash[hash_index];
-			if (key == key2 && use_hash_in_training)
+			if (key == key2 && skip_duplicated_positions_in_training)
 				goto RetryRead;
 			sr.hash[hash_index] = key; // Replace with the current key.
 		}
@@ -2127,7 +2322,7 @@ void LearnerThink::thread_worker(size_t thread_id)
 			pos.do_move(m, state[ply++]);
 
 			// Since the value of evaluate in leaf is used, the difference is updated.
-			Eval::evaluate_with_no_return(pos);
+			Eval::NNUE::update_eval(pos);
 		}
 
 		if (illegal_move) {
@@ -2156,9 +2351,6 @@ void LearnerThink::thread_worker(size_t thread_id)
 // Write evaluation function file.
 bool LearnerThink::save(bool is_final)
 {
-	// Calculate and output check sum before saving. (To check if it matches the next time)
-	std::cout << "Check Sum = "<< std::hex << Eval::calc_check_sum() << std::dec << std::endl;
-
 	// Each time you save, change the extension part of the file name like "0","1","2",..
 	// (Because I want to compare the winning rate for each evaluation function parameter later)
 
@@ -2304,7 +2496,8 @@ void shuffle_files(const vector<string>& filenames , const string& output_file_n
 	uint64_t write_file_count = 0;
 
 	// random number to shuffle
-	PRNG prng((std::random_device())());
+	// Do not use std::random_device().  Because it always the same integers on MinGW.
+	PRNG prng(std::chrono::system_clock::now().time_since_epoch().count());
 
 	// generate the name of the temporary file
 	auto make_filename = [](uint64_t i)
@@ -2382,7 +2575,8 @@ void shuffle_files_quick(const vector<string>& filenames, const string& output_f
 	uint64_t read_sfen_count = 0;
 
 	// random number to shuffle
-	PRNG prng((std::random_device())());
+	// Do not use std::random_device().  Because it always the same integers on MinGW.
+	PRNG prng(std::chrono::system_clock::now().time_since_epoch().count());
 
 	// number of files
 	size_t file_count = filenames.size();
@@ -2440,7 +2634,8 @@ void shuffle_files_on_memory(const vector<string>& filenames,const string output
 	}
 
 	// shuffle from buf[0] to buf[size-1]
-	PRNG prng((std::random_device())());
+	// Do not use std::random_device().  Because it always the same integers on MinGW.
+	PRNG prng(std::chrono::system_clock::now().time_since_epoch().count());
 	uint64_t size = (uint64_t)buf.size();
 	std::cout << "shuffle buf.size() = " << size << std::endl;
 	for (uint64_t i = 0; i < size; ++i)
@@ -2454,11 +2649,32 @@ void shuffle_files_on_memory(const vector<string>& filenames,const string output
 	std::cout << "..shuffle_on_memory done." << std::endl;
 }
 
-void convert_bin(const vector<string>& filenames, const string& output_file_name, const int ply_minimum, const int ply_maximum, const int interpolate_eval)
+bool fen_is_ok(Position& pos, std::string input_fen) {
+	std::string pos_fen = pos.fen();
+	std::istringstream ss_input(input_fen);
+	std::istringstream ss_pos(pos_fen);
+
+	// example : "2r4r/4kpp1/nb1np3/p2p3p/B2P1BP1/PP6/4NPKP/2R1R3 w - h6 0 24"
+	//       --> "2r4r/4kpp1/nb1np3/p2p3p/B2P1BP1/PP6/4NPKP/2R1R3"
+	std::string str_input, str_pos;
+	ss_input >> str_input;
+	ss_pos >> str_pos;
+
+	// Only compare "Piece placement field" between input_fen and pos.fen().
+	return str_input == str_pos;
+}
+
+void convert_bin(const vector<string>& filenames, const string& output_file_name, const int ply_minimum, const int ply_maximum, const int interpolate_eval, const bool check_invalid_fen, const bool check_illegal_move)
 {
+	std::cout << "check_invalid_fen=" << check_invalid_fen << std::endl;
+	std::cout << "check_illegal_move=" << check_illegal_move << std::endl;
+
 	std::fstream fs;
 	uint64_t data_size=0;
 	uint64_t filtered_size = 0;
+	uint64_t filtered_size_fen = 0;
+	uint64_t filtered_size_move = 0;
+	uint64_t filtered_size_ply = 0;
 	auto th = Threads.main();
 	auto &tpos = th->rootPos;
 	// convert plain rag to packed sfenvalue for Yaneura king
@@ -2472,34 +2688,61 @@ void convert_bin(const vector<string>& filenames, const string& output_file_name
 		PackedSfenValue p;
 		data_size = 0;
 		filtered_size = 0;
+		filtered_size_fen = 0;
+		filtered_size_move = 0;
+		filtered_size_ply = 0;
 		p.gamePly = 1; // Not included in apery format. Should be initialized
-		bool ignore_flag = false;
+		bool ignore_flag_fen = false;
+		bool ignore_flag_move = false;
+		bool ignore_flag_ply = false;
 		while (std::getline(ifs, line)) {
 			std::stringstream ss(line);
 			std::string token;
 			std::string value;
 			ss >> token;
 			if (token == "fen") {
-			  states = StateListPtr(new std::deque<StateInfo>(1)); // Drop old and create a new one
-			  tpos.set(line.substr(4), false, &states->back(), Threads.main());
-			  tpos.sfen_pack(p.sfen);
+				states = StateListPtr(new std::deque<StateInfo>(1)); // Drop old and create a new one
+				std::string input_fen = line.substr(4);
+				tpos.set(input_fen, false, &states->back(), Threads.main());
+				if (check_invalid_fen && !fen_is_ok(tpos, input_fen)) {
+					ignore_flag_fen = true;
+					filtered_size_fen++;
+				}
+				else {
+					tpos.sfen_pack(p.sfen);
+				}
 			}
 			else if (token == "move") {
 				ss >> value;
-				p.move = UCI::to_move(tpos, value);
+				Move move = UCI::to_move(tpos, value);
+				if (check_illegal_move && move == MOVE_NONE) {
+					ignore_flag_move = true;
+					filtered_size_move++;
+				}
+				else {
+					p.move = move;
+				}
 			}
 			else if (token == "score") {
-				ss >> p.score;
+				double score;
+				ss >> score;
+				// Training Formula · Issue #71 · nodchip/Stockfish https://github.com/nodchip/Stockfish/issues/71
+				// Normalize to [0.0, 1.0].
+				score = (score - src_score_min_value) / (src_score_max_value - src_score_min_value);
+				// Scale to [dest_score_min_value, dest_score_max_value].
+				score = score * (dest_score_max_value - dest_score_min_value) + dest_score_min_value;
+				p.score = Math::clamp((int32_t)std::round(score) , -(int32_t)VALUE_MATE , (int32_t)VALUE_MATE);
 			}
 			else if (token == "ply") {
 				int temp;
 				ss >> temp;
 				if(temp < ply_minimum || temp > ply_maximum){
-				  ignore_flag = true;
+					ignore_flag_ply = true;
+					filtered_size_ply++;
 				}
 				p.gamePly = uint16_t(temp); // No cast here?
 				if (interpolate_eval != 0){
-				  p.score = min(3000, interpolate_eval * temp);
+					p.score = min(3000, interpolate_eval * temp);
 				}
 			}
 			else if (token == "result") {
@@ -2507,24 +2750,27 @@ void convert_bin(const vector<string>& filenames, const string& output_file_name
 				ss >> temp;
 				p.game_result = int8_t(temp); // Do you need a cast here?
 				if (interpolate_eval){
-				  p.score = p.score * p.game_result;
+					p.score = p.score * p.game_result;
 				}
 			}
 			else if (token == "e") {
-			  if(!ignore_flag){
-				fs.write((char*)&p, sizeof(PackedSfenValue));
-				data_size+=1;
-				// debug
-				// std::cout<<tpos<<std::endl;
-				// std::cout<<p.score<<","<<int(p.gamePly)<<","<<int(p.game_result)<<std::endl;
-			  }else{
-			    ignore_flag = false;
-			    filtered_size += 1;
-			  }
-				
+				if (!(ignore_flag_fen || ignore_flag_move || ignore_flag_ply)) {
+					fs.write((char*)&p, sizeof(PackedSfenValue));
+					data_size+=1;
+					// debug
+					// std::cout<<tpos<<std::endl;
+					// std::cout<<p.score<<","<<int(p.gamePly)<<","<<int(p.game_result)<<std::endl;
+				}
+				else {
+					filtered_size++;
+				}
+				ignore_flag_fen = false;
+				ignore_flag_move = false;
+				ignore_flag_ply = false;
 			}
 		}
-		std::cout << "done" << data_size <<" parsed " << filtered_size<<" is filtered"<< std::endl;
+		std::cout << "done " << data_size << " parsed " << filtered_size << " is filtered"
+				  << " (invalid fen:" << filtered_size_fen << ", illegal move:" << filtered_size_move << ", invalid ply:" << filtered_size_ply << ")" << std::endl;
 		ifs.close();
 	}
 	std::cout << "all done" << std::endl;
@@ -2601,9 +2847,25 @@ Value parse_score_from_pgn_extract(std::string eval, bool& success) {
 	}
 }
 
-void convert_bin_from_pgn_extract(const vector<string>& filenames, const string& output_file_name, const bool pgn_eval_side_to_move)
+// for Debug
+//#define DEBUG_CONVERT_BIN_FROM_PGN_EXTRACT
+
+bool is_like_fen(std::string fen) {
+	int count_space = std::count(fen.cbegin(), fen.cend(), ' ');
+	int count_slash = std::count(fen.cbegin(), fen.cend(), '/');
+
+#if defined(DEBUG_CONVERT_BIN_FROM_PGN_EXTRACT)
+	//std::cout << "count_space=" << count_space << std::endl;
+	//std::cout << "count_slash=" << count_slash << std::endl;
+#endif
+
+	return count_space == 5 && count_slash == 7;
+}
+
+void convert_bin_from_pgn_extract(const vector<string>& filenames, const string& output_file_name, const bool pgn_eval_side_to_move, const bool convert_no_eval_fens_as_score_zero)
 {
 	std::cout << "pgn_eval_side_to_move=" << pgn_eval_side_to_move << std::endl;
+	std::cout << "convert_no_eval_fens_as_score_zero=" << convert_no_eval_fens_as_score_zero << std::endl;
 
 	auto th = Threads.main();
 	auto &pos = th->rootPos;
@@ -2635,8 +2897,9 @@ void convert_bin_from_pgn_extract(const vector<string>& filenames, const string&
 				// example: [Result "1-0"]
 				if (std::regex_search(line, match, pattern_result)) {
 					game_result = parse_game_result_from_pgn_extract(match.str(1));
-					//std::cout << "game_result=" << game_result << std::endl;
-
+#if defined(DEBUG_CONVERT_BIN_FROM_PGN_EXTRACT)
+					std::cout << "game_result=" << game_result << std::endl;
+#endif
 					game_count++;
 					if (game_count % 10000 == 0) {
 						std::cout << now_string() << " game_count=" << game_count << ", fen_count=" << fen_count << std::endl;
@@ -2647,80 +2910,131 @@ void convert_bin_from_pgn_extract(const vector<string>& filenames, const string&
 			}
 
 			else {
-				int gamePly = 0;
-				bool first = true;
-
-				PackedSfenValue psv;
-				memset((char*)&psv, 0, sizeof(PackedSfenValue));
-
+				int gamePly = 1;
 				auto itr = line.cbegin();
 
 				while (true) {
 					gamePly++;
 
-					std::regex pattern_bracket(R"(\{(.+?)\})");
+					PackedSfenValue psv;
+					memset((char*)&psv, 0, sizeof(PackedSfenValue));
 
-					std::regex pattern_eval1(R"(\[\%eval (.+?)\])");
-					std::regex pattern_eval2(R"((.+?)\/)");
+					// fen
+					{
+						bool fen_found = false;
 
-					// very slow
-					//std::regex pattern_eval1(R"(\[\%eval (#?[+-]?(?:\d+\.?\d*|\.\d+))\])");
-					//std::regex pattern_eval2(R"((#?[+-]?(?:\d+\.?\d*|\.\d+)\/))");
+						while (!fen_found) {
+							std::regex pattern_bracket(R"(\{(.+?)\})");
+							std::smatch match;
+							if (!std::regex_search(itr, line.cend(), match, pattern_bracket)) {
+								break;
+							}
 
-					std::regex pattern_move(R"((.+?)\{)");
-					std::smatch match;
+							itr += match.position(0) + match.length(0) - 1;
+							std::string str_fen = match.str(1);
+							trim(str_fen);
 
-					// example: { [%eval 0.25] [%clk 0:10:00] }
-					// example: { +0.71/22 1.2s }
-					// example: { book }
-					if (!std::regex_search(itr, line.cend(), match, pattern_bracket)) {
-						break;
+							if (is_like_fen(str_fen)) {
+								fen_found = true;
+
+								StateInfo si;
+								pos.set(str_fen, false, &si, th);
+								pos.sfen_pack(psv.sfen);
+							}
+
+#if defined(DEBUG_CONVERT_BIN_FROM_PGN_EXTRACT)
+							std::cout << "str_fen=" << str_fen << std::endl;
+							std::cout << "fen_found=" << fen_found << std::endl;
+#endif
+						}
+
+						if (!fen_found) {
+							break;
+						}
 					}
 
-					itr += match.position(0) + match.length(0);
-					std::string str_eval_clk = match.str(1);
-					trim(str_eval_clk);
-					//std::cout << "str_eval_clk="<< str_eval_clk << std::endl;
+					// move
+					{
+						std::regex pattern_move(R"(\}(.+?)\{)");
+						std::smatch match;
+						if (!std::regex_search(itr, line.cend(), match, pattern_move)) {
+							break;
+						}
 
-					if (str_eval_clk == "book") {
-						//std::cout << "book" << std::endl;
+						itr += match.position(0) + match.length(0) - 1;
+						std::string str_move = match.str(1);
+						trim(str_move);
+#if defined(DEBUG_CONVERT_BIN_FROM_PGN_EXTRACT)
+						std::cout << "str_move=" << str_move << std::endl;
+#endif
+						psv.move = UCI::to_move(pos, str_move);
+					}
 
-						// example: { rnbqkbnr/pppppppp/8/8/8/4P3/PPPP1PPP/RNBQKBNR b KQkq - 0 1 }
+					// eval
+					bool eval_found = false;
+					{
+						std::regex pattern_bracket(R"(\{(.+?)\})");
+						std::smatch match;
 						if (!std::regex_search(itr, line.cend(), match, pattern_bracket)) {
 							break;
 						}
-						itr += match.position(0) + match.length(0);
-						continue;
-					}
 
-					// example: [%eval 0.25]
-					// example: [%eval #-4]
-					// example: [%eval #3]
-					// example: +0.71/
-					if (std::regex_search(str_eval_clk, match, pattern_eval1) ||
-						std::regex_search(str_eval_clk, match, pattern_eval2)) {
-						std::string str_eval = match.str(1);
-						trim(str_eval);
-						//std::cout << "str_eval=" << str_eval << std::endl;
+						std::string str_eval_clk = match.str(1);
+						trim(str_eval_clk);
+#if defined(DEBUG_CONVERT_BIN_FROM_PGN_EXTRACT)
+						std::cout << "str_eval_clk=" << str_eval_clk << std::endl;
+#endif
 
-						bool success = false;
-						psv.score = Math::clamp(parse_score_from_pgn_extract(str_eval, success), -VALUE_MATE , VALUE_MATE);
-						//std::cout << "success=" << success << ", psv.score=" << psv.score << std::endl;
+						// example: { [%eval 0.25] [%clk 0:10:00] }
+						// example: { [%eval #-4] [%clk 0:10:00] }
+						// example: { [%eval #3] [%clk 0:10:00] }
+						// example: { +0.71/22 1.2s }
+						// example: { -M4/7 0.003s }
+						// example: { M3/245 0.017s }
+						// example: { +M1/245 0.010s, White mates }
+						// example: { 0.60 }
+						// example: { book }
+						// example: { rnbqkb1r/pp3ppp/2p1pn2/3p4/2PP4/2N2N2/PP2PPPP/R1BQKB1R w KQkq - 0 5 }
 
-						if (!success) {
-							//std::cout << "str_eval=" << str_eval << std::endl;
-							//std::cout << "success=" << success << ", psv.score=" << psv.score << std::endl;
-							break;
+						// Considering the absence of eval
+						if (!is_like_fen(str_eval_clk)) {
+							itr += match.position(0) + match.length(0) - 1;
+
+							if (str_eval_clk != "book") {
+								std::regex pattern_eval1(R"(\[\%eval (.+?)\])");
+								std::regex pattern_eval2(R"((.+?)\/)");
+
+								std::string str_eval;
+								if (std::regex_search(str_eval_clk, match, pattern_eval1) ||
+									std::regex_search(str_eval_clk, match, pattern_eval2)) {
+									str_eval = match.str(1);
+									trim(str_eval);
+								}
+								else {
+									str_eval = str_eval_clk;
+								}
+
+								bool success = false;
+								Value value = parse_score_from_pgn_extract(str_eval, success);
+								if (success) {
+									eval_found = true;
+									psv.score = Math::clamp(value, -VALUE_MATE , VALUE_MATE);
+								}
+
+#if defined(DEBUG_CONVERT_BIN_FROM_PGN_EXTRACT)
+								std::cout << "str_eval=" << str_eval << std::endl;
+								std::cout << "success=" << success << ", psv.score=" << psv.score << std::endl;
+#endif
+							}
 						}
 					}
-					else {
-						break;
-					}
 
-					if (first) {
-						first = false;
-					}
-					else {
+					// write
+					if (eval_found || convert_no_eval_fens_as_score_zero) {
+						if (!eval_found && convert_no_eval_fens_as_score_zero) {
+							psv.score = 0;
+						}
+
 						psv.gamePly = gamePly;
 						psv.game_result = game_result;
 
@@ -2731,45 +3045,10 @@ void convert_bin_from_pgn_extract(const vector<string>& filenames, const string&
 							psv.game_result *= -1;
 						}
 
-#if 0
-						std::cout << "write: "
-								  << "score=" << psv.score
-								  << ", move=" << psv.move
-								  << ", gamePly=" << psv.gamePly
-								  << ", game_result=" << (int)psv.game_result
-								  << std::endl;
-#endif
-
 						ofs.write((char*)&psv, sizeof(PackedSfenValue));
-						memset((char*)&psv, 0, sizeof(PackedSfenValue));
 
 						fen_count++;
 					}
-
-					// example: { rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1 }
-					if (!std::regex_search(itr, line.cend(), match, pattern_bracket)) {
-						break;
-					}
-
-					itr += match.position(0) + match.length(0);
-					std::string str_fen = match.str(1);
-					trim(str_fen);
-					//std::cout << "str_fen=" << str_fen << std::endl;
-
-					StateInfo si;
-					pos.set(str_fen, false, &si, th);
-					pos.sfen_pack(psv.sfen);
-
-					// example: d7d5 {
-					if (!std::regex_search(itr, line.cend(), match, pattern_move)) {
-						break;
-					}
-
-					itr += match.position(0) + match.length(0) - 1;
-					std::string str_move = match.str(1);
-					trim(str_move);
-					//std::cout << "str_move=" << str_move << std::endl;
-					psv.move = UCI::to_move(pos, str_move);
 				}
 
 				game_result = 0;
@@ -3082,12 +3361,18 @@ void learn(Position&, istringstream& is)
 	int ply_minimum = 0;
 	int ply_maximum = 114514;
 	bool interpolate_eval = 0;
+	bool check_invalid_fen = false;
+	bool check_illegal_move = false;
 	// convert teacher in pgn-extract format to Yaneura King's bin
 	bool use_convert_bin_from_pgn_extract = false;
 	bool pgn_eval_side_to_move = false;
+<<<<<<< HEAD
 	// evalmerge options
 	int ratio_feature = 50;
 	int ratio_network = 50;
+=======
+	bool convert_no_eval_fens_as_score_zero = false;
+>>>>>>> nodchip/master
 	// File name to write in those cases (default is "shuffled_sfen.bin")
 	string output_file_name = "shuffled_sfen.bin";
 
@@ -3185,11 +3470,17 @@ void learn(Position&, istringstream& is)
 		else if (option == "eta3")       is >> eta3;
 		else if (option == "eta1_epoch") is >> eta1_epoch;
 		else if (option == "eta2_epoch") is >> eta2_epoch;
-		else if (option == "use_draw_in_training") is >> use_draw_in_training;
-		else if (option == "use_draw_in_validation") is >> use_draw_in_validation;
-		else if (option == "use_hash_in_training") is >> use_hash_in_training;
+		// Accept also the old option name.
+		else if (option == "use_draw_in_training" || option == "use_draw_games_in_training") is >> use_draw_games_in_training;
+		// Accept also the old option name.
+		else if (option == "use_draw_in_validation" || option == "use_draw_games_in_validation") is >> use_draw_games_in_validation;
+		// Accept also the old option name.
+		else if (option == "use_hash_in_training" || option == "skip_duplicated_positions_in_training") is >> skip_duplicated_positions_in_training;
+		else if (option == "winning_probability_coefficient") is >> winning_probability_coefficient;
 		// Discount rate
 		else if (option == "discount_rate") is >> discount_rate;
+		// Using WDL with win rate model instead of sigmoid
+		else if (option == "use_wdl") is >> use_wdl;
 
 		// No learning of KK/KKP/KPP/KPPP.
 		else if (option == "freeze_kk")    is >> freeze[0];
@@ -3239,8 +3530,17 @@ void learn(Position&, istringstream& is)
 		else if (option == "convert_plain") use_convert_plain = true;
 		else if (option == "convert_bin") use_convert_bin = true;
 		else if (option == "interpolate_eval") is >> interpolate_eval;
+		else if (option == "check_invalid_fen") is >> check_invalid_fen;
+		else if (option == "check_illegal_move") is >> check_illegal_move;
 		else if (option == "convert_bin_from_pgn-extract") use_convert_bin_from_pgn_extract = true;
 		else if (option == "pgn_eval_side_to_move") is >> pgn_eval_side_to_move;
+		else if (option == "convert_no_eval_fens_as_score_zero") is >> convert_no_eval_fens_as_score_zero;
+		else if (option == "src_score_min_value") is >> src_score_min_value;
+		else if (option == "src_score_max_value") is >> src_score_max_value;
+		else if (option == "dest_score_min_value") is >> dest_score_min_value;
+		else if (option == "dest_score_max_value") is >> dest_score_max_value;
+		else if (option == "convert_teacher_signal_to_winning_probability") is >> convert_teacher_signal_to_winning_probability;
+		else if (option == "use_raw_nnue_eval") is >> use_raw_nnue_eval;
 
 		// example: learn convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32 nn_HalfKP.bin output_file_name nn_HalfKPE4.bin
 		else if (option == "convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32"            ) use_convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32             = true;
@@ -3361,24 +3661,24 @@ void learn(Position&, istringstream& is)
 	}
 	if (use_convert_plain)
 	{
-		init_nnue(true);
+		Eval::init_NNUE();
 		cout << "convert_plain.." << endl;
 		convert_plain(filenames, output_file_name);
 		return;
 	}
 	if (use_convert_bin)
 	{
-	  	init_nnue(true);
+		Eval::init_NNUE();
 		cout << "convert_bin.." << endl;
-		convert_bin(filenames,output_file_name, ply_minimum, ply_maximum, interpolate_eval);
+		convert_bin(filenames,output_file_name, ply_minimum, ply_maximum, interpolate_eval, check_invalid_fen, check_illegal_move);
 		return;
-		
+
 	}
 	if (use_convert_bin_from_pgn_extract)
 	{
-		init_nnue(true);
+		Eval::init_NNUE();
 		cout << "convert_bin_from_pgn-extract.." << endl;
-		convert_bin_from_pgn_extract(filenames, output_file_name, pgn_eval_side_to_move);
+		convert_bin_from_pgn_extract(filenames, output_file_name, pgn_eval_side_to_move, convert_no_eval_fens_as_score_zero);
 		return;
 	}
 	if (use_convert_from_halfkp_256x2_32_32_to_halfkpe4_256x2_32_32)
@@ -3552,6 +3852,9 @@ void learn(Position&, istringstream& is)
 #endif
 	cout << "learning rate     : " << eta1 << " , " << eta2 << " , " << eta3 << endl;
 	cout << "eta_epoch         : " << eta1_epoch << " , " << eta2_epoch << endl;
+	cout << "use_draw_games_in_training : " << use_draw_games_in_training << endl;
+	cout << "use_draw_games_in_validation : " << use_draw_games_in_validation << endl;
+	cout << "skip_duplicated_positions_in_training : " << skip_duplicated_positions_in_training << endl;
 #if defined(EVAL_NNUE)
 	if (newbob_decay != 1.0) {
 		cout << "scheduling        : newbob with decay = " << newbob_decay
@@ -3590,7 +3893,7 @@ void learn(Position&, istringstream& is)
 	cout << "init.." << endl;
 
 	// Read evaluation function parameters
-	init_nnue(true);
+	Eval::init_NNUE();
 
 #if !defined(EVAL_NNUE)
 	cout << "init_grad.." << endl;

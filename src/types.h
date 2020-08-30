@@ -1,8 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
-  Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2004-2020 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -40,7 +38,6 @@
 
 #include <cassert>
 #include <cctype>
-#include <climits>
 #include <cstdint>
 #include <cstdlib>
 #include <algorithm>
@@ -183,17 +180,14 @@ enum Value : int {
   VALUE_MATE_IN_MAX_PLY  =  VALUE_MATE - MAX_PLY,
   VALUE_MATED_IN_MAX_PLY = -VALUE_MATE_IN_MAX_PLY,
 
-  PawnValueMg   = 124,   PawnValueEg   = 206,
+  PawnValueMg   = 126,   PawnValueEg   = 208,
   KnightValueMg = 781,   KnightValueEg = 854,
   BishopValueMg = 825,   BishopValueEg = 915,
   RookValueMg   = 1276,  RookValueEg   = 1380,
   QueenValueMg  = 2538,  QueenValueEg  = 2682,
   Tempo = 28,
 
-  MidgameLimit  = 15258, EndgameLimit  = 3915,
-
-// Maximum value returned by the evaluation function (I want it to be around 2**14..)
-  VALUE_MAX_EVAL = 27000,
+  MidgameLimit  = 15258, EndgameLimit  = 3915
 };
 
 enum PieceType {
@@ -224,7 +218,8 @@ enum : int {
   DEPTH_QS_RECAPTURES = -5,
 
   DEPTH_NONE   = -6,
-  DEPTH_OFFSET = DEPTH_NONE
+
+  DEPTH_OFFSET = -7 // value used only for TT entry occupancy check
 };
 
 enum Square : int {
@@ -238,8 +233,8 @@ enum Square : int {
   SQ_A8, SQ_B8, SQ_C8, SQ_D8, SQ_E8, SQ_F8, SQ_G8, SQ_H8,
   SQ_NONE,
 
-  SQUARE_ZERO = 0, SQUARE_NB = 64,
-  SQUARE_NB_PLUS1 = SQUARE_NB + 1, // If there are no balls, it is treated as having moved to SQUARE_NB, so it may be necessary to secure the array with SQUARE_NB+1, so this constant is used.
+  SQUARE_ZERO = 0,
+  SQUARE_NB   = 64
 };
 
 enum Direction : int {
@@ -262,6 +257,21 @@ enum Rank : int {
   RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8, RANK_NB
 };
 
+// Keep track of what a move changes on the board (used by NNUE)
+struct DirtyPiece {
+
+  // Number of changed pieces
+  int dirty_num;
+
+  // Max 3 pieces can change in one move. A promotion with capture moves
+  // both the pawn and the captured piece to SQ_NONE and the piece promoted
+  // to from SQ_NONE to the capture square.
+  Piece piece[3];
+
+  // From and to squares, which may be SQ_NONE
+  Square from[3];
+  Square to[3];
+};
 
 /// Score enum stores a middlegame and an endgame value in a single integer (enum).
 /// The least significant 16 bits are used to store the middlegame value and the
@@ -287,10 +297,10 @@ inline Value mg_value(Score s) {
 }
 
 #define ENABLE_BASE_OPERATORS_ON(T)                                \
-constexpr T operator+(T d1, int d2) { return T(int(d1) + d2); } \
-constexpr T operator-(T d1, int d2) { return T(int(d1) - d2); } \
+constexpr T operator+(T d1, int d2) { return T(int(d1) + d2); }    \
+constexpr T operator-(T d1, int d2) { return T(int(d1) - d2); }    \
 constexpr T operator-(T d) { return T(-int(d)); }                  \
-inline T& operator+=(T& d1, int d2) { return d1 = d1 + d2; }         \
+inline T& operator+=(T& d1, int d2) { return d1 = d1 + d2; }       \
 inline T& operator-=(T& d1, int d2) { return d1 = d1 - d2; }
 
 #define ENABLE_INCR_OPERATORS_ON(T)                                \
@@ -309,8 +319,8 @@ inline T& operator/=(T& d, int i) { return d = T(int(d) / i); }
 ENABLE_FULL_OPERATORS_ON(Value)
 ENABLE_FULL_OPERATORS_ON(Direction)
 
-ENABLE_INCR_OPERATORS_ON(PieceType)
 ENABLE_INCR_OPERATORS_ON(Piece)
+ENABLE_INCR_OPERATORS_ON(PieceType)
 ENABLE_INCR_OPERATORS_ON(Square)
 ENABLE_INCR_OPERATORS_ON(File)
 ENABLE_INCR_OPERATORS_ON(Rank)
@@ -434,6 +444,11 @@ constexpr Square to_sq(Move m) {
   return Square(m & 0x3F);
 }
 
+// Return relative square when turning the board 180 degrees
+constexpr Square rotate180(Square sq) {
+    return (Square)(sq ^ 0x3F);
+}
+
 constexpr int from_to(Move m) {
  return m & 0xFFF;
 }
@@ -462,44 +477,6 @@ constexpr Move make(Square from, Square to, PieceType pt = KNIGHT) {
 constexpr bool is_ok(Move m) {
   return from_sq(m) != to_sq(m); // Catch MOVE_NULL and MOVE_NONE
 }
-
-// Return squares when turning the board 180Åã
-constexpr Square Inv(Square sq) { return (Square)((SQUARE_NB - 1) - sq); }
-
-// Return squares when mirroring the board
-constexpr Square Mir(Square sq) { return make_square(File(7 - (int)file_of(sq)), rank_of(sq)); }
-
-#if defined(EVAL_NNUE) || defined(EVAL_LEARN)
-// --------------------
-// 		piece box
-// --------------------
-
-// A number used to manage the piece list (which piece is where) used in the Position class.
-enum PieceNumber : uint8_t
-{
-	PIECE_NUMBER_PAWN = 0,
-	PIECE_NUMBER_KNIGHT = 16,
-	PIECE_NUMBER_BISHOP = 20,
-	PIECE_NUMBER_ROOK = 24,
-	PIECE_NUMBER_QUEEN = 28,
-	PIECE_NUMBER_KING = 30,
-	PIECE_NUMBER_WKING = 30,
-	PIECE_NUMBER_BKING = 31, // Use this if you need the numbers of the first and second balls
-	PIECE_NUMBER_ZERO = 0,
-	PIECE_NUMBER_NB = 32,
-};
-
-inline PieceNumber& operator++(PieceNumber& d) { return d = PieceNumber(int8_t(d) + 1); }
-inline PieceNumber operator++(PieceNumber& d, int) {
-  PieceNumber x = d;
-  d = PieceNumber(int8_t(d) + 1);
-  return x;
-}
-inline PieceNumber& operator--(PieceNumber& d) { return d = PieceNumber(int8_t(d) - 1); }
-
-// Piece Number integrity check. for assert.
-constexpr bool is_ok(PieceNumber pn) { return pn < PIECE_NUMBER_NB; }
-#endif  // defined(EVAL_NNUE) || defined(EVAL_LEARN)
 
 /// Based on a congruential pseudo random number generator
 constexpr Key make_key(uint64_t seed) {

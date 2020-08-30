@@ -276,13 +276,6 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
 	// Active color
 	sideToMove = (Color)stream.read_one_bit();
 
-	// clear evalList. It is cleared when memset is cleared to zero above...
-	evalList.clear();
-
-	// In updating the PieceList, we have to set which piece is where,
-	// A counter of how much each piece has been used
-  PieceNumber next_piece_number = PIECE_NUMBER_ZERO;
-
   pieceList[W_KING][0] = SQUARE_NB;
   pieceList[B_KING][0] = SQUARE_NB;
 
@@ -290,7 +283,7 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
 	if (mirror)
 	{
 		for (auto c : Colors)
-			board[Mir((Square)stream.read_n_bit(6))] = make_piece(c, KING);
+			board[flip_file((Square)stream.read_n_bit(6))] = make_piece(c, KING);
 	}
 	else
 	{
@@ -305,7 +298,7 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
     {
       auto sq = make_square(f, r);
       if (mirror) {
-        sq = Mir(sq);
+        sq = flip_file(sq);
       }
 
       // it seems there are already balls
@@ -326,14 +319,6 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
         continue;
 
       put_piece(Piece(pc), sq);
-
-      // update evalList
-      PieceNumber piece_no =
-        (pc == B_KING) ?PIECE_NUMBER_BKING :// Move ball
-        (pc == W_KING) ?PIECE_NUMBER_WKING :// Backing ball
-        next_piece_number++; // otherwise
-
-      evalList.put_piece(piece_no, sq, pc); // Place the pc piece in the sq box
 
       //cout << sq << ' ' << board[sq] << ' ' << stream.get_cursor() << endl;
 
@@ -372,7 +357,7 @@ int Position::set_from_packed_sfen(const PackedSfen& sfen , StateInfo * si, Thre
   if (stream.read_one_bit()) {
     Square ep_square = static_cast<Square>(stream.read_n_bit(6));
     if (mirror) {
-      ep_square = Mir(ep_square);
+      ep_square = flip_file(ep_square);
     }
     st->epSquare = ep_square;
 
@@ -402,9 +387,6 @@ set_state(st);
   //std::cout << *this << std::endl;
 
   assert(pos_is_ok());
-#if defined(EVAL_NNUE)
-  assert(evalList.is_valid(*this));
-#endif  // defined(EVAL_NNUE)
 
 	return 0;
 }
