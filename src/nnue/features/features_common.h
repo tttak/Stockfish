@@ -38,6 +38,9 @@ namespace Eval::NNUE::Features {
     kEnemyKingMoved, // do all calculations when enemy balls move
     kAnyKingMoved, // do all calculations if either ball moves
     kAnyPieceMoved, // always do all calculations
+
+    kFriendKingMovedOrPly4181121,
+    kFriendKingMovedOrPieceCount_24_16_8,
   };
 
   enum class Side {

@@ -40,28 +40,6 @@ PGOGENSFEN = ./$(EXE) gensfen depth 3 loop 100000
 SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp main.cpp \
 	material.cpp misc.cpp movegen.cpp movepick.cpp pawns.cpp position.cpp psqt.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp \
-<<<<<<< HEAD
-	eval/evaluate_mir_inv_tools.cpp \
-	eval/nnue/evaluate_nnue.cpp \
-	eval/nnue/evaluate_nnue_learner.cpp \
-	eval/nnue/features/half_kp.cpp \
-	eval/nnue/features/half_relative_kp.cpp \
-	eval/nnue/features/k.cpp \
-	eval/nnue/features/p.cpp \
-	eval/nnue/features/castling_right.cpp \
-	eval/nnue/features/enpassant.cpp \
-	eval/nnue/features/mobility.cpp \
-	eval/nnue/features/pawn.cpp \
-	eval/nnue/features/pawn_element.cpp \
-	eval/nnue/features/kk.cpp \
-	eval/nnue/features/half_kp_gameply40x4.cpp \
-	eval/nnue/features/half_kpkfile.cpp \
-	eval/nnue/features/half_kpkrank.cpp \
-	eval/nnue/features/pp.cpp \
-	eval/nnue/features/half_kpe4.cpp \
-	eval/nnue/features/half_kp_piececount.cpp \
-	eval/nnue/nnue_test_command.cpp \
-=======
 	nnue/evaluate_nnue.cpp \
 	nnue/evaluate_nnue_learner.cpp \
 	nnue/features/half_kp.cpp \
@@ -70,8 +48,16 @@ SRCS = benchmark.cpp bitbase.cpp bitboard.cpp endgame.cpp evaluate.cpp main.cpp 
 	nnue/features/p.cpp \
 	nnue/features/castling_right.cpp \
 	nnue/features/enpassant.cpp \
+	nnue/features/mobility.cpp \
+	nnue/features/pawn.cpp \
+	nnue/features/pawn_element.cpp \
+	nnue/features/kk.cpp \
+	nnue/features/half_kp_gameply40x4.cpp \
+	nnue/features/half_kpkfile.cpp \
+	nnue/features/half_kpkrank.cpp \
+	nnue/features/half_kpe4.cpp \
+	nnue/features/half_kp_piececount.cpp \
 	nnue/nnue_test_command.cpp \
->>>>>>> nodchip/master
 	extra/sfen_packer.cpp \
 	learn/gensfen2019.cpp \
 	learn/learner.cpp \

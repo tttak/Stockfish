@@ -108,6 +108,35 @@ namespace Eval::NNUE::Features {
           case TriggerEvent::kFriendKingMoved:
             reset[perspective] = dp.piece[0] == make_piece(perspective, KING);
             break;
+          case TriggerEvent::kAnyKingMoved:
+            reset[perspective] = dp.piece[0] == make_piece(perspective, KING)
+                              || dp.piece[0] == make_piece(~perspective, KING);
+            break;
+          case TriggerEvent::kFriendKingMovedOrPly4181121:
+            reset[perspective] = dp.piece[0] == make_piece(perspective, KING)
+                              || (pos.game_ply() == 41) || (pos.game_ply() == 81) || (pos.game_ply() == 121);
+            break;
+
+#if defined(USE_PIECECOUNT_IN_STATEINFO)
+          case TriggerEvent::kFriendKingMovedOrPieceCount_24_16_8:
+            {
+              const auto now = pos.state();
+              const auto prev = pos.state()->previous;
+              reset[perspective] =
+                  (dp.piece[0] == make_piece(perspective, KING)) ||
+                  (prev && (
+                             (prev->allPiecesCount == 25 && now->allPiecesCount == 24) ||
+                             (prev->allPiecesCount == 17 && now->allPiecesCount == 16) ||
+                             (prev->allPiecesCount ==  9 && now->allPiecesCount ==  8)
+                           )
+                  );
+            }
+            break;
+#endif  // defined(USE_PIECECOUNT_IN_STATEINFO)
+
+          case TriggerEvent::kAnyPieceMoved:
+            reset[perspective] = true;
+            break;
           default:
             assert(false);
             break;

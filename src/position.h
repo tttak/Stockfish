@@ -58,10 +58,7 @@ struct StateInfo {
 
   // Used by NNUE
   Eval::NNUE::Accumulator accumulator;
-<<<<<<< HEAD
-
-   // For management of evaluation value difference calculation
-  Eval::DirtyPiece dirtyPiece;
+  DirtyPiece dirtyPiece;
 
 #if defined(USE_MOBILITY_IN_STATEINFO)
   Bitboard mobility[2][6];
@@ -80,11 +77,6 @@ struct StateInfo {
   // [Color][pawn_count]
   int pawnIndex[2][8];
 #endif
-
-#endif  // defined(EVAL_NNUE)
-=======
-  DirtyPiece dirtyPiece;
->>>>>>> nodchip/master
 };
 
 

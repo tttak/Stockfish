@@ -29,7 +29,7 @@
 // HalfKPKrank
 #include "trainer/features/factorizer_half_kpkrank.h"
 // PP
-#include "trainer/features/factorizer_pp.h"
+//#include "trainer/features/factorizer_pp.h"
 // HalfKPE4
 #include "trainer/features/factorizer_half_kpe4.h"
 // HalfKP_PieceCount
