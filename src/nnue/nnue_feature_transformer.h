@@ -133,6 +133,15 @@ namespace Eval::NNUE {
               &reinterpret_cast<const __m256i*>(accumulation[perspectives[p]][0])[j * 2 + 0]);
           __m256i sum1 = _mm256_loadA_si256(
             &reinterpret_cast<const __m256i*>(accumulation[perspectives[p]][0])[j * 2 + 1]);
+
+          // revert kRefreshTriggers loop
+          for (IndexType i = 1; i < kRefreshTriggers.size(); ++i) {
+            sum0 = _mm256_add_epi16(sum0, reinterpret_cast<const __m256i*>(
+                accumulation[perspectives[p]][i])[j * 2 + 0]);
+            sum1 = _mm256_add_epi16(sum1, reinterpret_cast<const __m256i*>(
+                accumulation[perspectives[p]][i])[j * 2 + 1]);
+          }
+
           _mm256_storeA_si256(&out[j], _mm256_permute4x64_epi64(_mm256_max_epi8(
               _mm256_packs_epi16(sum0, sum1), kZero), kControl));
         }
@@ -179,6 +188,12 @@ namespace Eval::NNUE {
   #else
         for (IndexType j = 0; j < kHalfDimensions; ++j) {
           BiasType sum = accumulation[static_cast<int>(perspectives[p])][0][j];
+
+          // revert kRefreshTriggers loop
+          for (IndexType i = 1; i < kRefreshTriggers.size(); ++i) {
+            sum += accumulation[static_cast<int>(perspectives[p])][i][j];
+          }
+
           output[offset + j] = static_cast<OutputType>(
               std::max<int>(0, std::min<int>(127, sum)));
         }
@@ -194,7 +209,11 @@ namespace Eval::NNUE {
     // Calculate cumulative value without using difference calculation
     void RefreshAccumulator(const Position& pos) const {
       auto& accumulator = pos.state()->accumulator;
-      IndexType i = 0;
+
+     // revert kRefreshTriggers loop
+     // IndexType i = 0;
+     for (IndexType i = 0; i < kRefreshTriggers.size(); ++i) {
+
       Features::IndexList active_indices[2];
       RawFeatures::AppendActiveIndices(pos, kRefreshTriggers[i],
                                        active_indices);
@@ -255,6 +274,8 @@ namespace Eval::NNUE {
       _mm_empty();
   #endif
 
+     } // revert kRefreshTriggers loop
+
       accumulator.computed_accumulation = true;
       accumulator.computed_score = false;
     }
@@ -263,7 +284,11 @@ namespace Eval::NNUE {
     void UpdateAccumulator(const Position& pos) const {
       const auto prev_accumulator = pos.state()->previous->accumulator;
       auto& accumulator = pos.state()->accumulator;
-      IndexType i = 0;
+
+     // revert kRefreshTriggers loop
+     // IndexType i = 0;
+     for (IndexType i = 0; i < kRefreshTriggers.size(); ++i) {
+
       Features::IndexList removed_indices[2], added_indices[2];
       bool reset[2];
       RawFeatures::AppendChangedIndices(pos, kRefreshTriggers[i],
@@ -376,6 +401,8 @@ namespace Eval::NNUE {
   #if defined(USE_MMX)
       _mm_empty();
   #endif
+
+     } // revert kRefreshTriggers loop
 
       accumulator.computed_accumulation = true;
       accumulator.computed_score = false;
