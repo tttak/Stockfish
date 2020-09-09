@@ -218,8 +218,16 @@ namespace Eval::NNUE {
       RawFeatures::AppendActiveIndices(pos, kRefreshTriggers[i],
                                        active_indices);
       for (Color perspective : { WHITE, BLACK }) {
-        std::memcpy(accumulator.accumulation[perspective][i], biases_,
-                   kHalfDimensions * sizeof(BiasType));
+
+        // revert kRefreshTriggers loop
+        if (i == 0) {
+          std::memcpy(accumulator.accumulation[perspective][i], biases_,
+                      kHalfDimensions * sizeof(BiasType));
+        } else {
+          std::memset(accumulator.accumulation[perspective][i], 0,
+                      kHalfDimensions * sizeof(BiasType));
+        }
+
         for (const auto index : active_indices[perspective]) {
           const IndexType offset = kHalfDimensions * index;
   #if defined(USE_AVX512)
@@ -317,8 +325,16 @@ namespace Eval::NNUE {
   #endif
 
         if (reset[perspective]) {
-          std::memcpy(accumulator.accumulation[perspective][i], biases_,
-                      kHalfDimensions * sizeof(BiasType));
+
+          // revert kRefreshTriggers loop
+          if (i == 0) {
+            std::memcpy(accumulator.accumulation[perspective][i], biases_,
+                        kHalfDimensions * sizeof(BiasType));
+          } else {
+            std::memset(accumulator.accumulation[perspective][i], 0,
+                        kHalfDimensions * sizeof(BiasType));
+          }
+
         } else {
           std::memcpy(accumulator.accumulation[perspective][i],
                       prev_accumulator.accumulation[perspective][i],
